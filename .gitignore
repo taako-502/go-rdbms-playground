@@ -34,4 +34,5 @@ go.work.sum
 
 
 # Local explorer database
-/data/
+/data/*
+!/data/README.md
