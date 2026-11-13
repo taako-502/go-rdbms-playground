@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const state = { tables: [], selected: null, busy: false };
+const state = { tables: [], selected: null, busy: false, view: 'records' };
+const viewButtons = document.querySelectorAll('[data-view]');
 function notice(message, error = false) {
   $('notice').hidden = !message;
   $('notice').textContent = message;
@@ -17,7 +18,112 @@ async function request(path, options) {
   if (!response.ok) throw new Error(data.error || 'リクエストに失敗しました。');
   return data;
 }
-function route() { return `/api/tables/${encodeURIComponent(state.selected.schema.name)}/rows`; }
+function tableRoute() { return `/api/tables/${encodeURIComponent(state.selected.schema.name)}`; }
+const columnType = type => type === 'integer' ? 'int64' : type === 'boolean' ? 'bool' : type;
+
+function definitionRows(target, rows) {
+  target.replaceChildren(...rows.map(([name, ...values]) => {
+    const row = document.createElement('tr');
+    const heading = document.createElement('th');
+    heading.scope = 'row';
+    heading.textContent = name;
+    row.append(heading);
+    for (const value of values) {
+      const cell = document.createElement('td');
+      cell.textContent = value;
+      row.append(cell);
+    }
+    return row;
+  }));
+}
+
+function renderDefinitions(indexColumn) {
+  const { schema, indexes } = state.selected;
+  definitionRows($('schema-columns'), schema.columns.map(column => [
+    column.name, columnType(column.type), column.name === schema.primary_key ? 'はい' : '—', '不可',
+  ]));
+  definitionRows($('index-definitions'), indexes.map(column => [
+    column, 'B-tree', column === schema.primary_key ? '主キー（自動）' : 'セカンダリ',
+    column === schema.primary_key ? 'はい' : 'いいえ',
+  ]));
+  $('index-column').replaceChildren(...indexes.map(column => new Option(column, column)));
+  $('index-column').value = indexes.includes(indexColumn) ? indexColumn : schema.primary_key;
+  $('tree-summary').textContent = '';
+  $('index-tree').replaceChildren();
+}
+
+function renderTreeNode(node, columnType, isRoot = false) {
+  const branch = document.createElement('li');
+  const card = document.createElement('div');
+  card.className = 'tree-node';
+  const label = document.createElement('div');
+  label.className = 'tree-node-label';
+  const children = node.children ?? [];
+  label.textContent = isRoot ? (children.length ? 'ルート' : 'ルート兼葉') : (children.length ? '内部ノード' : '葉');
+  card.append(label);
+  const entries = document.createElement('div');
+  entries.className = 'tree-entries';
+  for (const entry of node.entries) {
+    const details = document.createElement('details');
+    const key = document.createElement('summary');
+    key.textContent = columnType === 'string' ? JSON.stringify(entry.key) : String(entry.key);
+    const offsets = document.createElement('div');
+    offsets.className = 'tree-offsets';
+    offsets.textContent = `バイト位置 ${entry.offsets.join(', ')}`;
+    details.append(key, offsets);
+    entries.append(details);
+  }
+  if (node.entries.length === 0) entries.textContent = 'キーなし';
+  card.append(entries);
+  branch.append(card);
+  if (children.length) {
+    const list = document.createElement('ul');
+    for (const child of children) list.append(renderTreeNode(child, columnType));
+    branch.append(list);
+  }
+  return branch;
+}
+
+async function loadIndex() {
+  const target = $('index-tree');
+  const summary = $('tree-summary');
+  const column = $('index-column').value;
+  summary.textContent = '';
+  target.textContent = '読み込み中…';
+  try {
+    const index = await request(`${tableRoute()}/indexes/${encodeURIComponent(column)}`);
+    const tree = document.createElement('ul');
+    tree.className = 'tree-root';
+    tree.append(renderTreeNode(index.root, index.column.type, true));
+    summary.textContent = `最小次数 ${index.degree} · ノードあたり最大 ${2 * Number(index.degree) - 1} キー`;
+    target.replaceChildren(tree);
+    target.scrollTo(0, 0);
+  } catch (error) {
+    target.textContent = error.message;
+  }
+}
+
+function showView(view) {
+  state.view = view;
+  for (const button of viewButtons) {
+    const active = button.dataset.view === view;
+    button.setAttribute('aria-pressed', String(active));
+    $(button.getAttribute('aria-controls')).hidden = !active;
+  }
+}
+
+async function showIndex() {
+  busy(true);
+  try { await loadIndex(); } finally { busy(false); }
+}
+
+for (const button of viewButtons) {
+  button.addEventListener('click', () => {
+    showView(button.dataset.view);
+    if (state.view === 'indexes') void showIndex();
+  });
+}
+$('index-column').addEventListener('change', showIndex);
 function renderForm() {
   const schema = state.selected.schema;
   $('fields').replaceChildren();
@@ -26,7 +132,7 @@ function renderForm() {
     const label = document.createElement('label'); label.className = 'field-label'; label.htmlFor = `field-${column.name}`;
     const name = document.createElement('span'); name.textContent = column.name;
     if (column.name === schema.primary_key) { const pk = document.createElement('span'); pk.className = 'pk'; pk.textContent = 'PK'; name.append(pk); }
-    const type = document.createElement('span'); type.className = 'field-type'; type.textContent = column.type === 'integer' ? 'int64' : column.type;
+    const type = document.createElement('span'); type.className = 'field-type'; type.textContent = columnType(column.type);
     label.append(name, type);
     let input;
     if (column.type === 'boolean') {
@@ -47,7 +153,7 @@ function renderRows(rows, inserted) {
   for (const column of schema.columns) {
     const th = document.createElement('th'); th.scope = 'col'; th.textContent = column.name;
     if (column.name === schema.primary_key) { const pk = document.createElement('span'); pk.className = 'pk'; pk.textContent = 'PK'; th.append(pk); }
-    const type = document.createElement('span'); type.className = 'column-kind'; type.textContent = column.type === 'integer' ? 'int64' : column.type; th.append(type); header.append(th);
+    const type = document.createElement('span'); type.className = 'column-kind'; type.textContent = columnType(column.type); th.append(type); header.append(th);
   }
   $('columns').replaceChildren(header);
   const fragment = document.createDocumentFragment();
@@ -67,8 +173,13 @@ function renderRows(rows, inserted) {
   $('row-empty').hidden = rows.length !== 0;
   if (inserted) $('rows').querySelector('.new-row')?.scrollIntoView({ block: 'nearest' });
 }
-async function loadRows(inserted) { const data = await request(route()); renderRows(data.rows, inserted); }
+async function loadRows(inserted) { const data = await request(`${tableRoute()}/rows`); renderRows(data.rows, inserted); }
+async function loadTable() {
+  if (state.view === 'indexes') await loadIndex();
+  await loadRows();
+}
 function selectTable(name) {
+  const indexColumn = state.selected?.schema.name === name ? $('index-column').value : null;
   state.selected = state.tables.find(table => table.schema.name === name) || state.tables[0] || null;
   $('tables').replaceChildren(); $('table-count').textContent = state.tables.length;
   for (const table of state.tables) {
@@ -78,7 +189,7 @@ function selectTable(name) {
     button.addEventListener('click', async () => {
       if (state.busy) return;
       selectTable(table.schema.name); busy(true); notice('');
-      try { await loadRows(); } catch (error) { notice(error.message, true); } finally { busy(false); }
+      try { await loadTable(); } catch (error) { notice(error.message, true); } finally { busy(false); }
     });
     $('tables').append(button);
   }
@@ -89,6 +200,7 @@ function selectTable(name) {
   $('index-count').textContent = state.selected.indexes.length;
   $('row-count').textContent = '—'; $('rows').replaceChildren(); $('columns').replaceChildren(); $('row-empty').hidden = true;
   renderForm();
+  renderDefinitions(indexColumn);
 }
 async function refresh() {
   if (state.busy) return;
@@ -97,7 +209,7 @@ async function refresh() {
     const current = state.selected?.schema.name;
     const data = await request('/api/tables'); state.tables = data.tables;
     selectTable(current); busy(true);
-    if (state.selected) await loadRows();
+    if (state.selected) await loadTable();
   } catch (error) { notice(`読み込みに失敗しました。${error.message}`, true); }
   finally { busy(false); }
 }
@@ -108,7 +220,7 @@ $('insert-form').addEventListener('submit', async event => {
   const values = Object.fromEntries(new FormData(event.currentTarget));
   busy(true); notice(''); let saved = false;
   try {
-    const data = await request(route(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
+    const data = await request(`${tableRoute()}/rows`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
     saved = true; $('insert-form').reset(); await loadRows(data.row);
     notice('1行を保存しました。一覧に反映されています。');
   } catch (error) {
