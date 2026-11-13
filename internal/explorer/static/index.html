@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RDB Explorer</title><link rel="stylesheet" href="/style.css"><script src="/app.js" defer></script>
+</head>
+<body>
+<aside class="sidebar">
+ <a class="brand" href="/" aria-label="RDB Explorer ホーム"><span class="brand-icon">▤</span><span>RDB<span class="brand-light"> Explorer</span></span></a>
+ <div class="connection"><span class="dot"></span> LOCAL DATABASE <span class="connection-label">Go / Embedded</span></div>
+ <div class="section-label">TABLES <span id="table-count">0</span></div>
+ <nav id="tables" aria-label="テーブル一覧"></nav>
+ <div class="sidebar-footer">go-rdbms-playground<br><span>小さなDBを、手元で触る。</span></div>
+</aside>
+<main>
+ <header class="topbar"><span>Workspace <span class="divider">/</span> Database explorer</span><span class="local-tag">LOCAL</span></header>
+ <section class="workspace">
+  <div class="page-heading"><div><div class="eyebrow">TABLE EXPLORER</div><h1 id="table-name">データベース</h1><p id="table-description">保存したデータを確認し、新しい行を追加できます。</p></div><button id="refresh" class="secondary" type="button">↻ 再読み込み</button></div>
+  <div id="notice" role="status" aria-live="polite" hidden></div>
+  <div id="empty-db" class="empty" hidden>テーブルがありません。Go APIでテーブルを作成してから再読み込みしてください。</div>
+  <div id="table-content" hidden>
+   <div class="stats"><div><span>ROWS</span><strong id="row-count">—</strong></div><div><span>COLUMNS</span><strong id="column-count">—</strong></div><div><span>INDEXES</span><strong id="index-count">—</strong></div></div>
+   <div class="content-grid">
+    <section class="panel records"><div class="panel-heading"><h2>保存済みデータ</h2><span class="muted">READ VIEW</span></div><div class="table-scroll"><table aria-label="保存済みデータ"><thead id="columns"></thead><tbody id="rows"></tbody></table></div><p id="row-empty" class="empty" hidden>まだデータがありません。右のフォームから最初の行を追加できます。</p><div class="table-footer"><span id="shown-count">0 rows</span><span>並び順は保証されません</span></div></section>
+    <section class="panel insert-panel"><div class="panel-heading"><h2>行を追加</h2><span class="insert-label">INSERT</span></div><p class="form-description">値を入力してデータベースに保存します。</p><form id="insert-form"><div id="fields"></div><button class="primary" id="insert" type="submit">＋ 行を保存</button><p class="form-note">保存した行は一覧に反映されます。</p></form></section>
+   </div>
+  </div>
+ </section>
+</main>
+</body>
+</html>

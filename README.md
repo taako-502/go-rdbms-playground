@@ -17,6 +17,17 @@ SQLを使わず、型付きのGo APIで挿入・検索する。
 
 ## 実行方法
 
+ブラウザでテーブルの閲覧・行の追加を行う場合：
+
+```sh
+go run ./cmd/explorer
+```
+
+[http://127.0.0.1:8080](http://127.0.0.1:8080)を開く。データは`./data`に保存され、再起動後も残る。
+空のDBにはサンプルの`users`テーブルを作成する。既存DBを開く場合は`-data /path/to/db -demo=false`、ポート変更は`-port 8081`を指定する。
+
+Go APIの使用例のみ実行する場合：
+
 ```sh
 go run ./examples/basic
 ```
@@ -76,6 +87,8 @@ if err != nil { return err }
 
 - `rdb/`: 本体、テスト、ベンチマーク
 - `examples/basic/`: 実行可能な使用例
+- `cmd/explorer/`: ローカル閲覧サーバー
+- `internal/explorer/`: HTTP APIと画面
 
 ```sh
 go test -race ./...
