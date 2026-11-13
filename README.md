@@ -5,8 +5,11 @@
 - Embedded Database（組み込み型データベース）
 - RDB
 - B-tree インデックス 対応
-- SQLは利用しない。データベースから取得したデータは.netにおけるLINQのような構文でデータを取得できるようにする。
-
+- SQLは利用しない
+  - migration: `CreateTable`と`CreateIndex`をサポートする。
+  - query: データベースから取得したデータは.netにおけるLINQのような構文でデータを取得できるようにする。
+  - command: `Insert`のみサポートします。
+- データの実体はファイルに保存します。バイナリー化しません。
 
 ### SQLは利用しないについて
 
