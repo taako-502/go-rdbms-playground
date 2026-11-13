@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	rdb "github.com/taako-502/go-rdbms-playground/rdb"
+	"github.com/taako-502/go-rdbms-playground/rdb"
 )
 
 type User struct {

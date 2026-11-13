@@ -12,7 +12,7 @@ import (
 	"net/http"
 	"strconv"
 
-	rdb "github.com/taako-502/go-rdbms-playground/rdb"
+	"github.com/taako-502/go-rdbms-playground/rdb"
 )
 
 //go:embed static/*

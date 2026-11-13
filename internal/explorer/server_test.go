@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	rdb "github.com/taako-502/go-rdbms-playground/rdb"
+	"github.com/taako-502/go-rdbms-playground/rdb"
 )
 
 func testDB(t *testing.T) (*rdb.DB, string) {
