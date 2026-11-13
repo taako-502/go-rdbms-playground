@@ -32,6 +32,7 @@ type DB struct {
 	failed bool
 	// testHook is package-private fault injection; callbacks run under mu.
 	testHook func(string) error
+	history  []appliedMigration
 }
 type Table struct {
 	db   *DB
@@ -108,6 +109,9 @@ func Open(dir string) (*DB, error) {
 		if err = db.recoverIndexes(st); err != nil {
 			return nil, err
 		}
+	}
+	if err = db.loadHistory(); err != nil {
+		return nil, err
 	}
 	success = true
 	return db, nil
