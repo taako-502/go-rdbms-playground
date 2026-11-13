@@ -85,6 +85,8 @@ if err != nil { return err }
 
 ## 開発・検証
 
+ソースと保存データの配置は[ARCHITECTURE.md](ARCHITECTURE.md)を参照。
+
 - `rdb/`: 本体、テスト、ベンチマーク
 - `examples/basic/`: 実行可能な使用例
 - `cmd/explorer/`: ローカル閲覧サーバー
