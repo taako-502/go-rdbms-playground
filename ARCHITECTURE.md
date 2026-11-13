@@ -4,6 +4,45 @@
 
 ## リポジトリ
 
+```text
+go-rdbms-playground/
+├── go.mod
+├── README.md
+├── AGENTS.md
+├── ARCHITECTURE.md
+├── LICENSE
+├── cmd/
+│   └── explorer/
+│       ├── main.go
+│       └── main_test.go
+├── internal/
+│   └── explorer/
+│       ├── server.go
+│       ├── server_test.go
+│       └── static/
+│           ├── index.html
+│           ├── style.css
+│           └── app.js
+├── rdb/
+│   ├── db.go
+│   ├── schema.go
+│   ├── typed.go
+│   ├── query.go
+│   ├── catalog.go
+│   ├── storage.go
+│   ├── btree.go
+│   ├── index.go
+│   ├── recovery.go
+│   ├── migration.go
+│   ├── *_test.go
+│   └── testdata/
+│       └── legacy/         # 互換性テスト用のDBファイル
+├── examples/
+│   └── basic/
+│       └── main.go
+└── data/                  # 実行時に作成するDB保存先
+```
+
 | パス | 役割 |
 | --- | --- |
 | `go.mod` | モジュール名とGoバージョン |
@@ -55,6 +94,17 @@
 
 次は、`users`と`products`という2つのテーブルを持つ場合の配置例。
 `products`は説明用であり、Explorerが自動作成するテーブルではない。
+
+```text
+data/
+├── catalog.json
+├── migrations.json        # マイグレーション適用時のみ
+├── users.jsonl
+├── users.id.index.json
+├── users.age.index.json
+├── products.jsonl
+└── products.id.index.json
+```
 
 | パス例 | 内容 | 更新方法 |
 | --- | --- | --- |
