@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/taako-502/go-rdbms-playground/internal/explorer"
+	"github.com/taako-502/go-rdbms-playground/migrations"
 	rdb "github.com/taako-502/go-rdbms-playground/rdb"
 )
 
@@ -25,7 +26,7 @@ func main() {
 func run() error {
 	data := flag.String("data", "./data", "database directory")
 	port := flag.Int("port", 8080, "localhost HTTP port")
-	demo := flag.Bool("demo", true, "create sample users table when database is empty")
+	demo := flag.Bool("demo", true, "apply sample migrations and seed an empty users table")
 	flag.Parse()
 	if *port < 1 || *port > 65535 {
 		return fmt.Errorf("port must be between 1 and 65535")
@@ -67,18 +68,7 @@ func run() error {
 	}
 }
 func seed(ctx context.Context, db *rdb.DB) error {
-	tables, err := db.Tables(ctx)
-	if err != nil {
-		return err
-	}
-	if len(tables) > 0 {
-		return nil
-	}
-	schema := rdb.Schema{Name: "users", Columns: []rdb.Column{{Name: "id", Type: rdb.Integer}, {Name: "name", Type: rdb.String}, {Name: "age", Type: rdb.Integer}, {Name: "active", Type: rdb.Boolean}}, PrimaryKey: "id"}
-	if err = db.CreateTable(ctx, schema); err != nil {
-		return err
-	}
-	if err = db.CreateIndex(ctx, "users", "age"); err != nil {
+	if err := migrations.Apply(ctx, db); err != nil {
 		return err
 	}
 	type user struct {
@@ -90,6 +80,13 @@ func seed(ctx context.Context, db *rdb.DB) error {
 	table, err := db.Table[user]("users")
 	if err != nil {
 		return err
+	}
+	rows, err := table.All(ctx)
+	if err != nil {
+		return err
+	}
+	if len(rows) > 0 {
+		return nil
 	}
 	for _, u := range []user{{1, "Alice", 20, true}, {2, "Bob", 28, true}, {3, "Carol", 35, false}} {
 		if err = table.Insert(ctx, u); err != nil {

@@ -3,10 +3,12 @@
 ```text
 go-rdbms-playground/
 ├── cmd/                    # 実行プログラムのエントリーポイント
+│   ├── migrate/            # 日時付きマイグレーションを適用
 │   └── explorer/           # DBを開き、ローカルHTTPサーバーを起動
 ├── internal/               # 外部からimportできない内部パッケージ
 │   └── explorer/           # テーブル閲覧・InsertのHTTP APIと静的ファイル配信
 │       └── static/         # ブラウザ画面のHTML・CSS・JavaScript
+├── migrations/             # 日時付きのGo定義と登録一覧
 ├── rdb/                    # 公開パッケージ：DB本体、テスト、ベンチマーク
 │   └── testdata/           # テスト用の固定データ
 │       └── legacy/         # 保存形式の互換性を確認するDBデータ
