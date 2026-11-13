@@ -11,6 +11,18 @@ import (
 func migrations() []Migration {
 	return []Migration{{Version: 2, Operations: []Operation{CreateIndexOp("users", "active")}}, {Version: 1, Operations: []Operation{CreateTableOp(testSchema())}}}
 }
+
+func TestMigrationHashCompatibility(t *testing.T) {
+	m := Migration{Version: 1, Operations: []Operation{
+		CreateTableOp(Schema{Name: "users", Columns: []Column{{Name: "id", Type: Integer}}, PrimaryKey: "id"}),
+		CreateIndexOp("users", "id"),
+	}}
+	// Checksum of the encoding/json representation persisted before the v2 migration.
+	const want = "4725a096f7e8f58132c7af7c33bd1eea1b83dfe26e9b1a87dbefc7acc7cd2f32"
+	if got := migrationHash(m); got != want {
+		t.Fatalf("migration checksum changed: got %s, want %s", got, want)
+	}
+}
 func TestMigrations(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

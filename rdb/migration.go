@@ -4,7 +4,6 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha256"
-	jsonv1 "encoding/json"
 	"encoding/json/v2"
 	"errors"
 	"fmt"
@@ -41,8 +40,9 @@ type appliedMigration struct {
 }
 
 func migrationHash(m Migration) string {
-	// Keep the original canonical encoding: applied migration checksums are persistent.
-	b, _ := jsonv1.Marshal(m)
+	// Validated migrations contain ASCII identifiers and nonempty slices, preserving
+	// the original JSON representation used by persistent migration checksums.
+	b, _ := json.Marshal(m, json.Deterministic(true))
 	return fmt.Sprintf("%x", sha256.Sum256(b))
 }
 func (db *DB) loadHistory() error {
