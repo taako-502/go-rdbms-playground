@@ -51,6 +51,21 @@ func (q Query) All(ctx context.Context) ([]Row, error) {
 		}
 	}
 	result := make([]Row, 0)
+	if q.predicate != nil {
+		if idx := st.indexes[q.predicate.column]; idx != nil {
+			for _, off := range idx.search(makeKey(value)) {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				row, err := st.rows.readAt(off)
+				if err != nil {
+					return nil, err
+				}
+				result = append(result, row)
+			}
+			return result, nil
+		}
+	}
 	err := st.rows.scan(ctx, false, func(r record) error {
 		if q.predicate == nil || r.Row[q.predicate.column] == value {
 			result = append(result, r.Row)

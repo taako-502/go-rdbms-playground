@@ -19,8 +19,9 @@ type catalog struct {
 	Tables  []tableDef `json:"tables"`
 }
 type tableState struct {
-	def  tableDef
-	rows *rowStore
+	def     tableDef
+	rows    *rowStore
+	indexes map[string]*btree
 }
 type DB struct {
 	mu     sync.Mutex
@@ -101,15 +102,7 @@ func Open(dir string) (*DB, error) {
 		}
 		st := &tableState{def: def, rows: rows}
 		db.tables[name] = st
-		seen := map[any]bool{}
-		if err = rows.scan(context.Background(), true, func(r record) error {
-			key := r.Row[def.Schema.PrimaryKey]
-			if seen[key] {
-				return fmt.Errorf("%w: duplicate primary key", ErrCorrupt)
-			}
-			seen[key] = true
-			return nil
-		}); err != nil {
+		if err = db.buildIndexes(context.Background(), st, true); err != nil {
 			return nil, err
 		}
 	}
@@ -194,7 +187,8 @@ func (db *DB) createTable(ctx context.Context, s Schema) error {
 		rows.close()
 		return db.fail(fmt.Errorf("%w: nonempty orphan rows", ErrCorrupt))
 	}
-	st := &tableState{def: tableDef{Schema: s}, rows: rows}
+	st := &tableState{def: tableDef{Schema: s, Indexes: []string{s.PrimaryKey}}, rows: rows}
+	st.indexes = map[string]*btree{s.PrimaryKey: newTree()}
 	db.tables[s.Name] = st
 	if err = rows.file.Sync(); err != nil {
 		return db.fail(err)
@@ -218,17 +212,18 @@ func (t *Table) Insert(ctx context.Context, row Row) error {
 		return err
 	}
 	pk := st.def.Schema.PrimaryKey
-	err = st.rows.scan(ctx, false, func(existing record) error {
-		if existing.Row[pk] == r[pk] {
-			return ErrDuplicate
-		}
-		return nil
-	})
-	if err != nil {
-		return err
+	if len(st.indexes[pk].search(makeKey(r[pk]))) > 0 {
+		return ErrDuplicate
 	}
-	if _, err = st.rows.append(r); err != nil {
+	off, err := st.rows.append(r)
+	if err != nil {
 		return db.fail(err)
 	}
-	return db.fail(db.hit("row_synced"))
+	if err = db.hit("row_synced"); err != nil {
+		return db.fail(err)
+	}
+	for col, idx := range st.indexes {
+		idx.insert(makeKey(r[col]), off)
+	}
+	return nil
 }
