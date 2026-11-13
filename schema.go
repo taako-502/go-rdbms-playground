@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"unicode/utf8"
 )
 
 type Type string
@@ -78,7 +79,7 @@ func normalize(t Type, v any) (any, error) {
 			return int64(n), nil
 		}
 	case String:
-		if x, ok := v.(string); ok {
+		if x, ok := v.(string); ok && utf8.ValidString(x) {
 			return x, nil
 		}
 	case Boolean:

@@ -78,3 +78,25 @@ func TestTailRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLargeRow(t *testing.T) {
+	s, err := openRows(filepath.Join(t.TempDir(), "large.jsonl"), testSchema())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.close()
+	r := testRow(1)
+	r["name"] = string(make([]byte, 128*1024))
+	off, err := s.append(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.readAt(off)
+	if err != nil || !reflect.DeepEqual(r, got) {
+		t.Fatalf("large row round trip failed: %v", err)
+	}
+	count := 0
+	if err = s.scan(context.Background(), false, func(record) error { count++; return nil }); err != nil || count != 1 {
+		t.Fatalf("%d %v", count, err)
+	}
+}

@@ -185,3 +185,35 @@ func TestCorruptRowsRejected(t *testing.T) {
 		})
 	}
 }
+
+func TestMissingOrEmptyCatalogRejected(t *testing.T) {
+	for _, kind := range []string{"missing", "null", "empty"} {
+		t.Run(kind, func(t *testing.T) {
+			db, tbl := newTestDB(t)
+			if err := tbl.Insert(context.Background(), testRow(1)); err != nil {
+				t.Fatal(err)
+			}
+			db.Close()
+			path := filepath.Join(db.dir, "catalog.json")
+			var err error
+			if kind == "missing" {
+				err = os.Remove(path)
+			} else {
+				data := "null"
+				if kind == "empty" {
+					data = "{}"
+				}
+				err = os.WriteFile(path, []byte(data), 0600)
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if again, err := Open(db.dir); !errors.Is(err, ErrCorrupt) {
+				if again != nil {
+					again.Close()
+				}
+				t.Fatal(err)
+			}
+		})
+	}
+}

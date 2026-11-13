@@ -28,3 +28,11 @@ func TestSchema(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestInvalidUTF8Rejected(t *testing.T) {
+	r := testRow(1)
+	r["name"] = string([]byte{0xff})
+	if _, err := testSchema().validateRow(r); !errors.Is(err, ErrRow) {
+		t.Fatal(err)
+	}
+}

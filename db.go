@@ -75,9 +75,18 @@ func Open(dir string) (*DB, error) {
 	}
 	b, err := os.ReadFile(filepath.Join(abs, "catalog.json"))
 	if errors.Is(err, os.ErrNotExist) {
+		matches, e := filepath.Glob(filepath.Join(abs, "*.jsonl"))
+		if e != nil {
+			return nil, e
+		}
+		if len(matches) > 0 {
+			return nil, fmt.Errorf("%w: missing catalog with existing rows", ErrCorrupt)
+		}
 		err = atomicJSON(filepath.Join(abs, "catalog.json"), db.cat)
 	} else if err == nil {
-		err = json.Unmarshal(b, &db.cat)
+		var decoded catalog
+		err = json.Unmarshal(b, &decoded)
+		db.cat = decoded
 	}
 	if err != nil {
 		return nil, err
