@@ -1,7 +1,8 @@
 'use strict';
 const $ = id => document.getElementById(id);
-const state = { tables: [], selected: null, busy: false, view: 'records' };
+const state = { tables: [], selected: null, busy: false, view: 'records', primaryKeys: null };
 const viewButtons = document.querySelectorAll('[data-view]');
+const booleanValues = ['true', 'false'];
 function notice(message, error = false) {
   $('notice').hidden = !message;
   $('notice').textContent = message;
@@ -10,6 +11,7 @@ function notice(message, error = false) {
 function busy(value) {
   state.busy = value;
   document.querySelectorAll('button,input,select').forEach(el => { el.disabled = value; });
+  $('random-fill').disabled = value || state.primaryKeys === null;
   $('insert').textContent = value ? '処理中…' : '＋ 行を保存';
 }
 async function request(path, options) {
@@ -137,7 +139,7 @@ function renderForm() {
     let input;
     if (column.type === 'boolean') {
       input = document.createElement('select');
-      for (const value of ['true', 'false']) { const option = document.createElement('option'); option.value = value; option.textContent = value; input.append(option); }
+      for (const value of booleanValues) { const option = document.createElement('option'); option.value = value; option.textContent = value; input.append(option); }
     } else {
       input = document.createElement('input'); input.type = 'text'; input.autocomplete = 'off';
       if (column.type === 'integer') { input.inputMode = 'numeric'; input.pattern = '-?[0-9]+'; input.required = true; input.placeholder = column.name === schema.primary_key ? '一意の整数' : '整数を入力'; }
@@ -147,8 +149,55 @@ function renderForm() {
     wrapper.append(label, input); $('fields').append(wrapper);
   }
 }
+function fillRandomValues() {
+  if (state.busy || state.primaryKeys === null) return;
+  const schema = state.selected.schema;
+  const primary = schema.columns.find(column => column.name === schema.primary_key);
+  const randomInteger = () => Math.floor(Math.random() * 1000) + 1;
+  const randomText = () => `sample-${Math.floor(Math.random() * 36 ** 6).toString(36).padStart(6, '0')}`;
+  let primaryValue;
+  switch (primary.type) {
+    case 'integer': {
+      let value = randomInteger();
+      while (state.primaryKeys.has(String(value))) value++;
+      primaryValue = String(value);
+      break;
+    }
+    case 'string': {
+      const prefix = randomText();
+      primaryValue = prefix;
+      for (let suffix = 1; state.primaryKeys.has(primaryValue); suffix++) {
+        primaryValue = `${prefix}-${suffix}`;
+      }
+      break;
+    }
+    case 'boolean': {
+      const available = booleanValues.filter(value => !state.primaryKeys.has(value));
+      if (available.length === 0) {
+        notice('主キーの true と false はどちらも使用済みです。', true);
+        return;
+      }
+      primaryValue = available[Math.floor(Math.random() * available.length)];
+      break;
+    }
+  }
+  for (const column of schema.columns) {
+    const field = $(`field-${column.name}`);
+    if (column === primary) {
+      field.value = primaryValue;
+      continue;
+    }
+    switch (column.type) {
+      case 'integer': field.value = String(randomInteger()); break;
+      case 'string': field.value = randomText(); break;
+      case 'boolean': field.value = booleanValues[Math.floor(Math.random() * booleanValues.length)]; break;
+    }
+  }
+  notice('');
+}
 function renderRows(rows, inserted) {
   const schema = state.selected.schema;
+  state.primaryKeys = new Set(rows.map(row => String(row[schema.primary_key])));
   const header = document.createElement('tr');
   for (const column of schema.columns) {
     const th = document.createElement('th'); th.scope = 'col'; th.textContent = column.name;
@@ -180,6 +229,7 @@ async function loadTable() {
 }
 function selectTable(name) {
   const indexColumn = state.selected?.schema.name === name ? $('index-column').value : null;
+  state.primaryKeys = null;
   state.selected = state.tables.find(table => table.schema.name === name) || state.tables[0] || null;
   $('tables').replaceChildren(); $('table-count').textContent = state.tables.length;
   for (const table of state.tables) {
@@ -214,6 +264,7 @@ async function refresh() {
   finally { busy(false); }
 }
 $('refresh').addEventListener('click', refresh);
+$('random-fill').addEventListener('click', fillRandomValues);
 $('insert-form').addEventListener('submit', async event => {
   event.preventDefault(); if (state.busy || !state.selected) return;
   // Strings preserve every int64 digit; never parse integer inputs with Number.
@@ -221,6 +272,7 @@ $('insert-form').addEventListener('submit', async event => {
   busy(true); notice(''); let saved = false;
   try {
     const data = await request(`${tableRoute()}/rows`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(values) });
+    state.primaryKeys?.add(String(data.row[state.selected.schema.primary_key]));
     saved = true; $('insert-form').reset(); await loadRows(data.row);
     notice('1行を保存しました。一覧に反映されています。');
   } catch (error) {
