@@ -87,11 +87,6 @@ if err != nil { return err }
 
 ソースと保存データの配置は[ARCHITECTURE.md](ARCHITECTURE.md)を参照。
 
-- `rdb/`: 本体、テスト、ベンチマーク
-- `examples/basic/`: 実行可能な使用例
-- `cmd/explorer/`: ローカル閲覧サーバー
-- `internal/explorer/`: HTTP APIと画面
-
 ```sh
 go test -race ./...
 go vet ./...
