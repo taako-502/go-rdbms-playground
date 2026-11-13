@@ -24,6 +24,7 @@ func New(db *rdb.DB) http.Handler {
 	s := &server{db: db}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/tables", s.tables)
+	mux.HandleFunc("GET /api/tables/{table}/indexes/{column}", s.index)
 	mux.HandleFunc("GET /api/tables/{table}/rows", s.rows)
 	mux.HandleFunc("POST /api/tables/{table}/rows", s.insert)
 	static, err := fs.Sub(assets, "static")
@@ -43,8 +44,8 @@ func New(db *rdb.DB) http.Handler {
 		protected.ServeHTTP(w, r)
 	})
 }
-func writeJSON(w http.ResponseWriter, status int, value any) {
-	b, err := json.Marshal(value)
+func writeJSON(w http.ResponseWriter, status int, value any, options ...json.Options) {
+	b, err := json.Marshal(value, options...)
 	if err != nil {
 		http.Error(w, "response encoding failed", 500)
 		return
@@ -77,6 +78,20 @@ func (s *server) tables(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"tables": tables})
+}
+
+func (s *server) index(w http.ResponseWriter, r *http.Request) {
+	index, err := s.db.InspectIndex(r.Context(), r.PathValue("table"), r.PathValue("column"))
+	if errors.Is(err, rdb.ErrNotFound) {
+		writeError(w, 404, "インデックスが見つかりません。")
+		return
+	}
+	if err != nil {
+		fail(w, err)
+		return
+	}
+	// Preserve int64 keys and byte offsets across the JavaScript boundary.
+	writeJSON(w, 200, index, json.StringifyNumbers(true))
 }
 
 // JSON integers are decimal strings on the HTTP boundary, so JavaScript never

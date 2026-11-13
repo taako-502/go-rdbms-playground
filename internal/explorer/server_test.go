@@ -5,6 +5,8 @@ import (
 	"encoding/json/v2"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -113,6 +115,70 @@ func TestInvalidInsert(t *testing.T) {
 		t.Fatal(w.Code)
 	}
 }
+
+func TestIndexTree(t *testing.T) {
+	db, _ := testDB(t)
+	if err := db.CreateIndex(context.Background(), "items", "active"); err != nil {
+		t.Fatal(err)
+	}
+	h := New(db)
+	const prefix = "/api/tables/items/"
+	readTree := func(column string) (string, treeNodeResponse) {
+		t.Helper()
+		w := send(h, "GET", prefix+"indexes/"+column, "")
+		var got struct {
+			Degree string           `json:"degree"`
+			Root   treeNodeResponse `json:"root"`
+		}
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &got); err != nil {
+			t.Fatal(err)
+		}
+		return got.Degree, got.Root
+	}
+	degree, root := readTree("id")
+	if degree != "8" || len(root.Entries) != 0 || len(root.Children) != 0 {
+		t.Fatalf("empty index: degree %q, root %+v", degree, root)
+	}
+	for id := range 16 {
+		key := strconv.Itoa(id)
+		if id == 15 {
+			key = "9223372036854775807"
+		}
+		w := send(h, "POST", prefix+"rows", `{"id":"`+key+`","title":"","active":"false"}`)
+		if w.Code != 201 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+	}
+	_, root = readTree("id")
+	if len(root.Entries) != 1 || root.Entries[0].Key != "7" || len(root.Children) != 2 {
+		t.Fatalf("split root: %+v", root)
+	}
+	left, right := root.Children[0].Entries, root.Children[1].Entries
+	if len(left) != 7 || left[0].Key != "0" || !slices.Equal(left[0].Offsets, []string{"0"}) ||
+		len(right) != 8 || right[7].Key != "9223372036854775807" {
+		t.Fatalf("split leaves: left %+v, right %+v", left, right)
+	}
+	_, root = readTree("active")
+	if len(root.Entries) != 1 || root.Entries[0].Key != false || len(root.Entries[0].Offsets) != 16 {
+		t.Fatalf("secondary index: %+v", root)
+	}
+	w := send(h, "GET", prefix+"indexes/title", "")
+	if w.Code != 404 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+type treeNodeResponse struct {
+	Entries []struct {
+		Key     any      `json:"key"`
+		Offsets []string `json:"offsets"`
+	} `json:"entries"`
+	Children []treeNodeResponse `json:"children"`
+}
+
 func TestCrossOriginAndStatic(t *testing.T) {
 	db, _ := testDB(t)
 	h := New(db)

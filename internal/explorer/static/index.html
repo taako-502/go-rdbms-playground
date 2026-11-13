@@ -10,20 +10,43 @@
  <div class="connection"><span class="dot"></span> LOCAL DATABASE <span class="connection-label">Go / Embedded</span></div>
  <div class="section-label">TABLES <span id="table-count">0</span></div>
  <nav id="tables" aria-label="テーブル一覧"></nav>
- <div class="sidebar-footer">go-rdbms-playground<br><span>小さなDBを、手元で触る。</span></div>
 </aside>
 <main>
  <header class="topbar"><span>Workspace <span class="divider">/</span> Database explorer</span><span class="local-tag">LOCAL</span></header>
  <section class="workspace">
-  <div class="page-heading"><div><div class="eyebrow">TABLE EXPLORER</div><h1 id="table-name">データベース</h1><p id="table-description">保存したデータを確認し、新しい行を追加できます。</p></div><button id="refresh" class="secondary" type="button">↻ 再読み込み</button></div>
+  <div class="page-heading"><h1 id="table-name">データベース</h1><button id="refresh" class="secondary" type="button">↻ 再読み込み</button></div>
   <div id="notice" role="status" aria-live="polite" hidden></div>
   <div id="empty-db" class="empty" hidden>テーブルがありません。Go APIでテーブルを作成してから再読み込みしてください。</div>
   <div id="table-content" hidden>
    <div class="stats"><div><span>ROWS</span><strong id="row-count">—</strong></div><div><span>COLUMNS</span><strong id="column-count">—</strong></div><div><span>INDEXES</span><strong id="index-count">—</strong></div></div>
-   <div class="content-grid">
+   <nav class="table-views" aria-label="テーブルの表示">
+    <button class="secondary" type="button" data-view="records" aria-controls="view-records" aria-pressed="true">行データ</button>
+    <button class="secondary" type="button" data-view="schema" aria-controls="view-schema" aria-pressed="false">テーブル定義</button>
+    <button class="secondary" type="button" data-view="indexes" aria-controls="view-indexes" aria-pressed="false">インデックス</button>
+   </nav>
+   <div id="view-records" class="content-grid">
     <section class="panel records"><div class="panel-heading"><h2>保存済みデータ</h2><span class="muted">READ VIEW</span></div><div class="table-scroll"><table aria-label="保存済みデータ"><thead id="columns"></thead><tbody id="rows"></tbody></table></div><p id="row-empty" class="empty" hidden>まだデータがありません。右のフォームから最初の行を追加できます。</p><div class="table-footer"><span id="shown-count">0 rows</span><span>並び順は保証されません</span></div></section>
     <section class="panel insert-panel"><div class="panel-heading"><h2>行を追加</h2><span class="insert-label">INSERT</span></div><p class="form-description">値を入力してデータベースに保存します。</p><form id="insert-form"><div id="fields"></div><button class="primary" id="insert" type="submit">＋ 行を保存</button><p class="form-note">保存した行は一覧に反映されます。</p></form></section>
    </div>
+   <section id="view-schema" class="panel" hidden>
+    <div class="panel-heading"><h2>テーブル定義</h2></div>
+    <div class="table-scroll"><table aria-label="カラム定義">
+     <thead><tr><th scope="col">カラム</th><th scope="col">型</th><th scope="col">主キー</th><th scope="col">NULL</th></tr></thead>
+     <tbody id="schema-columns"></tbody>
+    </table></div>
+   </section>
+   <section id="view-indexes" class="panel" hidden>
+    <div class="panel-heading"><h2>インデックス定義</h2></div>
+    <div class="table-scroll"><table aria-label="インデックス定義">
+     <thead><tr><th scope="col">カラム</th><th scope="col">方式</th><th scope="col">種別</th><th scope="col">一意</th></tr></thead>
+     <tbody id="index-definitions"></tbody>
+    </table></div>
+    <div class="index-tree-heading">
+     <div><h2>B-tree</h2><p id="tree-summary" class="tree-summary"></p></div>
+     <label for="index-column">対象カラム <select id="index-column"></select></label>
+    </div>
+    <div id="index-tree" class="tree-scroll" role="region" aria-label="B-tree のノード" tabindex="0"></div>
+   </section>
   </div>
  </section>
 </main>
