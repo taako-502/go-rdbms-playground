@@ -133,3 +133,23 @@
   padding: 4px 7px;
   border-top: 1px solid var(--border);
 }
+
+/* 入力と保存を隣接させ、繰り返し追加時のポインター移動を短くする。 */
+.insert-actions{display:flex;gap:8px;align-items:stretch}
+.insert-actions>button{flex:1;min-width:0;width:auto;margin:0;padding:12px 8px;white-space:nowrap}
+
+/* 通知を通常のレイアウトから外し、表示・非表示でフォームを動かさない。 */
+#notice{
+  position:fixed;
+  left:16px;
+  bottom:16px;
+  z-index:100;
+  width:max-content;
+  max-width:min(480px,calc(100vw - 32px));
+  max-height:30vh;
+  overflow:auto;
+  overflow-wrap:anywhere;
+  margin:0;
+  box-shadow:0 4px 20px #183b3026;
+  pointer-events:none;
+}
