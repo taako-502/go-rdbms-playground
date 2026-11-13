@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	rdb "github.com/taako-502/go-rdbms-playground"
+	rdb "github.com/taako-502/go-rdbms-playground/rdb"
 	"os"
 )
 

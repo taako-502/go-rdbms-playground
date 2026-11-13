@@ -55,6 +55,12 @@ result, err := query.All(ctx)
 `And`、`Or`、`Join`、`GroupBy`なども対応しません。
 
 
+## ディレクトリ構成
+
+- `rdb/`: データベース本体、単体・復旧テスト、ベンチマーク
+- `examples/basic/`: 実行可能な使用例
+- ルート: `go.mod`、README、ライセンスなどのプロジェクト設定・文書
+
 ## 実行方法
 
 Go 1.24以上。外部ライブラリは不要。
@@ -79,7 +85,7 @@ after reopen: 3 rows
 ```go
 import (
     "context"
-    rdb "github.com/taako-502/go-rdbms-playground"
+    rdb "github.com/taako-502/go-rdbms-playground/rdb"
 )
 
 ctx := context.Background()
@@ -150,9 +156,9 @@ _ = rows
 
 ```sh
 go test -cover ./...
-go test -run TestProcessCrashRecovery -v
+go test ./rdb -run TestProcessCrashRecovery -v
 # 初期行数100/1000、検索は1件ヒット、挿入は主キーのみ／通常インデックス追加で比較。
-go test -run '^$' -bench 'Benchmark(Lookup|Insert)' -benchmem -benchtime=20x
+go test ./rdb -run '^$' -bench 'Benchmark(Lookup|Insert)' -benchmem -benchtime=20x
 ```
 
 復旧テストは子プロセスを終了させ、行追記途中・行Sync後・インデックス一時ファイルSync後・rename後・マイグレーション変更後・履歴保存中の再起動を検証する。I/Oエラーを注入するテストでは、その後の操作拒否と再Openによる復旧も確認する。
