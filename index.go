@@ -61,5 +61,8 @@ func (db *DB) createIndex(ctx context.Context, table, column string) error {
 			db.cat.Tables[i] = st.def
 		}
 	}
-	return db.fail(atomicJSON(filepath.Join(db.dir, "catalog.json"), db.cat))
+	if err := atomicJSON(filepath.Join(db.dir, "catalog.json"), db.cat); err != nil {
+		return db.fail(err)
+	}
+	return db.fail(db.saveIndex(st, column))
 }

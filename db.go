@@ -105,6 +105,9 @@ func Open(dir string) (*DB, error) {
 		if err = db.buildIndexes(context.Background(), st, true); err != nil {
 			return nil, err
 		}
+		if err = db.recoverIndexes(st); err != nil {
+			return nil, err
+		}
 	}
 	success = true
 	return db, nil
@@ -122,6 +125,7 @@ func (db *DB) check(ctx context.Context) error {
 func (db *DB) fail(err error) error {
 	if err != nil {
 		db.failed = true
+		return errors.Join(err, ErrNeedsRecovery)
 	}
 	return err
 }
@@ -197,7 +201,7 @@ func (db *DB) createTable(ctx context.Context, s Schema) error {
 	if err = atomicJSON(filepath.Join(db.dir, "catalog.json"), db.cat); err != nil {
 		return db.fail(err)
 	}
-	return nil
+	return db.fail(db.saveIndexes(st))
 }
 func (t *Table) Insert(ctx context.Context, row Row) error {
 	db := t.db
@@ -225,5 +229,5 @@ func (t *Table) Insert(ctx context.Context, row Row) error {
 	for col, idx := range st.indexes {
 		idx.insert(makeKey(r[col]), off)
 	}
-	return nil
+	return db.fail(db.saveIndexes(st))
 }
