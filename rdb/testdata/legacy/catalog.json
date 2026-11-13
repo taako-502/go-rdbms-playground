@@ -1,0 +1,29 @@
+{
+  "version": 1,
+  "tables": [
+    {
+      "schema": {
+        "name": "users",
+        "columns": [
+          {
+            "name": "id",
+            "type": "integer"
+          },
+          {
+            "name": "name",
+            "type": "string"
+          },
+          {
+            "name": "active",
+            "type": "boolean"
+          }
+        ],
+        "primary_key": "id"
+      },
+      "indexes": [
+        "id",
+        "active"
+      ]
+    }
+  ]
+}

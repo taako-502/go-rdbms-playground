@@ -4,9 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	rdb "github.com/taako-502/go-rdbms-playground/rdb"
 	"os"
+
+	rdb "github.com/taako-502/go-rdbms-playground/rdb"
 )
+
+type User struct {
+	ID   int64  `rdb:"id"`
+	Name string `rdb:"name"`
+	Age  int64  `rdb:"age"`
+}
 
 func main() {
 	if err := run(); err != nil {
@@ -33,21 +40,28 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	users, err := db.Table("users")
+	users, err := db.Table[User]("users")
 	if err != nil {
 		return err
 	}
-	for _, row := range []rdb.Row{{"id": 1, "name": "Alice", "age": 20}, {"id": 2, "name": "Bob", "age": 20}, {"id": 3, "name": "Carol", "age": 30}} {
-		if err = users.Insert(ctx, row); err != nil {
+	age, err := users.Column[int64]("age")
+	if err != nil {
+		return err
+	}
+	for _, user := range []User{{ID: 1, Name: "Alice", Age: 20}, {ID: 2, Name: "Bob", Age: 20}, {ID: 3, Name: "Carol", Age: 30}} {
+		if err = users.Insert(ctx, user); err != nil {
 			return err
 		}
 	}
-	rows, err := users.Where(rdb.Equal("age", 20)).All(ctx)
+	rows, err := users.Where(rdb.Equal(age, 20)).All(ctx)
 	if err != nil {
 		return err
 	}
 	fmt.Printf("age=20: %d rows\n", len(rows))
-	if err = users.Insert(ctx, rdb.Row{"id": 1, "name": "Duplicate", "age": 99}); !errors.Is(err, rdb.ErrDuplicate) {
+	for _, user := range rows {
+		fmt.Printf("  %s (%d)\n", user.Name, user.Age)
+	}
+	if err = users.Insert(ctx, User{ID: 1, Name: "Duplicate", Age: 99}); !errors.Is(err, rdb.ErrDuplicate) {
 		return fmt.Errorf("expected duplicate error, got %v", err)
 	}
 	fmt.Println("duplicate primary key: rejected")
@@ -59,7 +73,7 @@ func run() error {
 		return err
 	}
 	defer reopened.Close()
-	users, err = reopened.Table("users")
+	users, err = reopened.Table[User]("users")
 	if err != nil {
 		return err
 	}

@@ -44,11 +44,11 @@ func TestFailedInsertRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer again.Close()
-			tbl, err = again.Table("users")
+			tbl, err = again.RawTable("users")
 			if err != nil {
 				t.Fatal(err)
 			}
-			if got, err := tbl.Where(Equal("active", true)).All(ctx); err != nil || len(got) != 2 {
+			if got, err := tbl.Where(RawEqual("active", true)).All(ctx); err != nil || len(got) != 2 {
 				t.Fatalf("%v %v", got, err)
 			}
 			if err := tbl.Insert(ctx, testRow(2)); !errors.Is(err, ErrDuplicate) {
@@ -62,7 +62,7 @@ func TestRepairIndexDamage(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			db, tbl := newTestDB(t)
 			ctx := context.Background()
-			for i := int64(0); i < 3; i++ {
+			for i := range int64(3) {
 				if err := tbl.Insert(ctx, testRow(i)); err != nil {
 					t.Fatal(err)
 				}
@@ -105,12 +105,12 @@ func TestRepairIndexDamage(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer again.Close()
-			tbl, err = again.Table("users")
+			tbl, err = again.RawTable("users")
 			if err != nil {
 				t.Fatal(err)
 			}
-			for i := 0; i < 3; i++ {
-				got, err := tbl.Where(Equal("id", i)).All(ctx)
+			for i := range 3 {
+				got, err := tbl.Where(RawEqual("id", i)).All(ctx)
 				if err != nil || len(got) != 1 {
 					t.Fatalf("%v %v", got, err)
 				}
@@ -137,7 +137,7 @@ func TestOpenRemovesIncompleteTail(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer again.Close()
-	tbl, err = again.Table("users")
+	tbl, err = again.RawTable("users")
 	if err != nil {
 		t.Fatal(err)
 	}

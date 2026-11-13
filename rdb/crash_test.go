@@ -20,7 +20,7 @@ func TestCrashHelper(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tbl, err := db.Table("users")
+	tbl, err := db.RawTable("users")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,8 +71,8 @@ func TestProcessCrashRecovery(t *testing.T) {
 			cmd := exec.Command(os.Args[0], "-test.run=^TestCrashHelper$")
 			cmd.Env = append(os.Environ(), "RDB_CRASH_DIR="+db.dir, "RDB_CRASH_POINT="+point)
 			out, err := cmd.CombinedOutput()
-			var exit *exec.ExitError
-			if !errors.As(err, &exit) || exit.ExitCode() != 77 {
+			exit, ok := errors.AsType[*exec.ExitError](err)
+			if !ok || exit.ExitCode() != 77 {
 				t.Fatalf("%v: %s", err, out)
 			}
 			again, err := Open(db.dir)
@@ -80,7 +80,7 @@ func TestProcessCrashRecovery(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer again.Close()
-			tbl, err = again.Table("users")
+			tbl, err = again.RawTable("users")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -88,7 +88,7 @@ func TestProcessCrashRecovery(t *testing.T) {
 			if point == "partial_row" || point == "migration_changed" || point == "migration_history_temp_synced" || point == "migration_history_renamed" {
 				want = 1
 			}
-			got, err := tbl.Where(Equal("active", true)).All(ctx)
+			got, err := tbl.Where(RawEqual("active", true)).All(ctx)
 			if err != nil || len(got) != want {
 				t.Fatalf("%v %v", got, err)
 			}

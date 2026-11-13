@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-func newTestDB(t *testing.T) (*DB, *Table) {
+func newTestDB(t *testing.T) (*DB, *RawTable) {
 	t.Helper()
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -17,7 +17,7 @@ func newTestDB(t *testing.T) (*DB, *Table) {
 	if err = db.CreateTable(context.Background(), testSchema()); err != nil {
 		t.Fatal(err)
 	}
-	table, err := db.Table("users")
+	table, err := db.RawTable("users")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,7 +46,7 @@ func TestInsertAndReopen(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer reopened.Close()
-	tbl, err = reopened.Table("users")
+	tbl, err = reopened.RawTable("users")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,8 +59,7 @@ func TestConcurrentInsert(t *testing.T) {
 	var wg sync.WaitGroup
 	errs := make(chan error, 20)
 	for range 20 {
-		wg.Add(1)
-		go func() { defer wg.Done(); errs <- tbl.Insert(context.Background(), testRow(1)) }()
+		wg.Go(func() { errs <- tbl.Insert(context.Background(), testRow(1)) })
 	}
 	wg.Wait()
 	close(errs)

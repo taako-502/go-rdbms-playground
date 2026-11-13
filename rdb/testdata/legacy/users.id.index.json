@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "table": "users",
+  "column": "id",
+  "degree": 8,
+  "tree": {
+    "root": {
+      "entries": [
+        {
+          "key": {
+            "type": "integer",
+            "int": 9223372036854775807
+          },
+          "offsets": [
+            0
+          ]
+        }
+      ]
+    }
+  }
+}

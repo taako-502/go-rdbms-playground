@@ -5,27 +5,27 @@ import (
 	"fmt"
 )
 
-type Predicate struct {
+type RawPredicate struct {
 	column string
 	value  any
 }
 
-func Equal(column string, value any) Predicate { return Predicate{column, value} }
+func RawEqual(column string, value any) RawPredicate { return RawPredicate{column, value} }
 
-// Query is immutable. Invalid conditions are reported by All.
-type Query struct {
-	table     *Table
-	predicate *Predicate
+// RawQuery is immutable. Invalid conditions are reported by All.
+type RawQuery struct {
+	table     *RawTable
+	predicate *RawPredicate
 	err       error
 }
 
-func (t *Table) Where(p Predicate) Query { return Query{table: t, predicate: &p} }
-func (q Query) Where(p Predicate) Query {
+func (t *RawTable) Where(p RawPredicate) RawQuery { return RawQuery{table: t, predicate: &p} }
+func (q RawQuery) Where(p RawPredicate) RawQuery {
 	q.err = fmt.Errorf("%w: Where may only be called once", ErrQuery)
 	return q
 }
-func (t *Table) All(ctx context.Context) ([]Row, error) { return (Query{table: t}).All(ctx) }
-func (q Query) All(ctx context.Context) ([]Row, error) {
+func (t *RawTable) All(ctx context.Context) ([]Row, error) { return (RawQuery{table: t}).All(ctx) }
+func (q RawQuery) All(ctx context.Context) ([]Row, error) {
 	if q.err != nil {
 		return nil, q.err
 	}

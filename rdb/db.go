@@ -2,7 +2,7 @@ package rdb
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -34,7 +34,7 @@ type DB struct {
 	testHook func(string) error
 	history  []appliedMigration
 }
-type Table struct {
+type RawTable struct {
 	db   *DB
 	name string
 }
@@ -164,7 +164,7 @@ func (db *DB) Close() error {
 	opened.Unlock()
 	return errors.Join(errs...)
 }
-func (db *DB) Table(name string) (*Table, error) {
+func (db *DB) RawTable(name string) (*RawTable, error) {
 	db.mu.Lock()
 	defer db.mu.Unlock()
 	if err := db.check(context.Background()); err != nil {
@@ -173,7 +173,7 @@ func (db *DB) Table(name string) (*Table, error) {
 	if db.tables[name] == nil {
 		return nil, fmt.Errorf("%w: %s", ErrNotFound, name)
 	}
-	return &Table{db, name}, nil
+	return &RawTable{db, name}, nil
 }
 func (db *DB) CreateTable(ctx context.Context, s Schema) error {
 	db.mu.Lock()
@@ -216,7 +216,7 @@ func (db *DB) createTable(ctx context.Context, s Schema) error {
 	}
 	return db.fail(db.saveIndexes(st))
 }
-func (t *Table) Insert(ctx context.Context, row Row) error {
+func (t *RawTable) Insert(ctx context.Context, row Row) error {
 	db := t.db
 	db.mu.Lock()
 	defer db.mu.Unlock()

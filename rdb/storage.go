@@ -4,7 +4,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
+	"encoding/json/v2"
 	"fmt"
 	"io"
 	"os"
@@ -29,7 +30,7 @@ func openRows(path string, s Schema) (*rowStore, error) {
 }
 func (s *rowStore) close() error { return s.file.Close() }
 func (s *rowStore) append(row Row) (int64, error) {
-	b, err := json.Marshal(row)
+	b, err := json.Marshal(row, json.Deterministic(true))
 	if err != nil {
 		return 0, err
 	}
@@ -48,7 +49,7 @@ func (s *rowStore) append(row Row) (int64, error) {
 	return off, err
 }
 func decodeRow(data []byte, schema Schema) (Row, error) {
-	var raw map[string]json.RawMessage
+	var raw map[string]jsontext.Value
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrCorrupt, err)
 	}
@@ -133,7 +134,7 @@ func (s *rowStore) scan(ctx context.Context, recoverTail bool, visit func(record
 // atomicJSON syncs content before rename and the parent directory afterwards.
 func atomicJSON(path string, value any) error { return atomicJSONHook(path, value, nil) }
 func atomicJSONHook(path string, value any, hook func(string) error) error {
-	b, err := json.MarshalIndent(value, "", "  ")
+	b, err := json.Marshal(value, json.Deterministic(true), jsontext.WithIndent("  "))
 	if err != nil {
 		return err
 	}

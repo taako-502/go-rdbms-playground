@@ -100,3 +100,17 @@ func TestLargeRow(t *testing.T) {
 		t.Fatalf("%d %v", count, err)
 	}
 }
+
+func TestStrictJSONRows(t *testing.T) {
+	inputs := [][]byte{
+		[]byte(`{"id":1,"id":2,"name":"a","active":true}`),
+		append(append([]byte(`{"id":1,"name":"`), 0xff), []byte(`","active":true}`)...),
+		[]byte(`{"id":9223372036854775808,"name":"a","active":true}`),
+		[]byte(`{"id":null,"name":"a","active":true}`),
+	}
+	for _, input := range inputs {
+		if _, err := decodeRow(input, testSchema()); !errors.Is(err, ErrCorrupt) {
+			t.Fatalf("accepted %q: %v", input, err)
+		}
+	}
+}

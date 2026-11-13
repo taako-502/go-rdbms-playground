@@ -10,28 +10,28 @@ import (
 func TestIndexMatchesScan(t *testing.T) {
 	db, tbl := newTestDB(t)
 	ctx := context.Background()
-	for i := int64(0); i < 40; i++ {
+	for i := range int64(40) {
 		r := testRow(i)
 		r["active"] = i%2 == 0
 		if err := tbl.Insert(ctx, r); err != nil {
 			t.Fatal(err)
 		}
 	}
-	before, err := tbl.Where(Equal("active", true)).All(ctx)
+	before, err := tbl.Where(RawEqual("active", true)).All(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err = db.CreateIndex(ctx, "users", "active"); err != nil {
 		t.Fatal(err)
 	}
-	after, err := tbl.Where(Equal("active", true)).All(ctx)
+	after, err := tbl.Where(RawEqual("active", true)).All(ctx)
 	if err != nil || !reflect.DeepEqual(before, after) {
 		t.Fatalf("%v %v", after, err)
 	}
 	if err = tbl.Insert(ctx, testRow(40)); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := tbl.Where(Equal("active", true)).All(ctx); err != nil || len(got) != 21 {
+	if got, err := tbl.Where(RawEqual("active", true)).All(ctx); err != nil || len(got) != 21 {
 		t.Fatalf("%v %v", got, err)
 	}
 	if err = tbl.Insert(ctx, testRow(40)); !errors.Is(err, ErrDuplicate) {
@@ -51,11 +51,11 @@ func TestIndexMatchesScan(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer again.Close()
-	tbl, err = again.Table("users")
+	tbl, err = again.RawTable("users")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := tbl.Where(Equal("name", "日本語")).All(ctx); err != nil || len(got) != 41 {
+	if got, err := tbl.Where(RawEqual("name", "日本語")).All(ctx); err != nil || len(got) != 41 {
 		t.Fatalf("%v %v", got, err)
 	}
 }

@@ -9,15 +9,15 @@ import (
 func TestQuery(t *testing.T) {
 	db, tbl := newTestDB(t)
 	ctx := context.Background()
-	for i := int64(0); i < 3; i++ {
+	for i := range int64(3) {
 		if err := tbl.Insert(ctx, testRow(i)); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for _, tt := range []struct {
-		p     Predicate
+		p     RawPredicate
 		count int
-	}{{Equal("id", 1), 1}, {Equal("name", "日本語"), 3}, {Equal("active", true), 3}, {Equal("id", 99), 0}} {
+	}{{RawEqual("id", 1), 1}, {RawEqual("name", "日本語"), 3}, {RawEqual("active", true), 3}, {RawEqual("id", 99), 0}} {
 		got, err := tbl.Where(tt.p).All(ctx)
 		if err != nil || len(got) != tt.count || got == nil {
 			t.Fatalf("%v %v", got, err)
@@ -26,13 +26,13 @@ func TestQuery(t *testing.T) {
 	if got, err := tbl.All(ctx); err != nil || len(got) != 3 {
 		t.Fatalf("%v %v", got, err)
 	}
-	if _, err := tbl.Where(Equal("id", 1)).Where(Equal("id", 2)).All(ctx); !errors.Is(err, ErrQuery) {
+	if _, err := tbl.Where(RawEqual("id", 1)).Where(RawEqual("id", 2)).All(ctx); !errors.Is(err, ErrQuery) {
 		t.Fatal(err)
 	}
-	if _, err := tbl.Where(Equal("unknown", 1)).All(ctx); !errors.Is(err, ErrNotFound) {
+	if _, err := tbl.Where(RawEqual("unknown", 1)).All(ctx); !errors.Is(err, ErrNotFound) {
 		t.Fatal(err)
 	}
-	if _, err := tbl.Where(Equal("id", "1")).All(ctx); !errors.Is(err, ErrQuery) {
+	if _, err := tbl.Where(RawEqual("id", "1")).All(ctx); !errors.Is(err, ErrQuery) {
 		t.Fatal(err)
 	}
 	canceled, cancel := context.WithCancel(ctx)
@@ -48,11 +48,11 @@ func TestQuery(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer db2.Close()
-	tbl, err = db2.Table("users")
+	tbl, err = db2.RawTable("users")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, err := tbl.Where(Equal("id", 1)).All(ctx); err != nil || len(got) != 1 {
+	if got, err := tbl.Where(RawEqual("id", 1)).All(ctx); err != nil || len(got) != 1 {
 		t.Fatalf("%v %v", got, err)
 	}
 }

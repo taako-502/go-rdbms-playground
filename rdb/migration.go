@@ -4,7 +4,8 @@ import (
 	"cmp"
 	"context"
 	"crypto/sha256"
-	"encoding/json"
+	jsonv1 "encoding/json"
+	"encoding/json/v2"
 	"errors"
 	"fmt"
 	"os"
@@ -40,7 +41,8 @@ type appliedMigration struct {
 }
 
 func migrationHash(m Migration) string {
-	b, _ := json.Marshal(m)
+	// Keep the original canonical encoding: applied migration checksums are persistent.
+	b, _ := jsonv1.Marshal(m)
 	return fmt.Sprintf("%x", sha256.Sum256(b))
 }
 func (db *DB) loadHistory() error {

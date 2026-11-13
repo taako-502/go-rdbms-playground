@@ -69,7 +69,7 @@ func TestMigrationResume(t *testing.T) {
 			if len(db.history) != 1 || db.tables["users"].indexes["active"] == nil {
 				t.Fatal("migration incomplete")
 			}
-			tbl, err := db.Table("users")
+			tbl, err := db.RawTable("users")
 			if err != nil {
 				t.Fatal(err)
 			}

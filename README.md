@@ -47,8 +47,8 @@ Command系関数の実装対象
 `Where`の重複呼び出しはエラーにする。検索結果がない場合は空スライスを返し、結果の並び順は保証しない。
 
 ```go
-// こちらも設計イメージ
-query := users.Where(Equal(UserAge, 20))
+// UserAgeはusers.Column[int64]("age")で取得した型付きカラム
+query := users.Where(rdb.Equal(UserAge, 20))
 result, err := query.All(ctx)
 ```
 
@@ -63,7 +63,7 @@ result, err := query.All(ctx)
 
 ## 実行方法
 
-Go 1.24以上。外部ライブラリは不要。
+Go 1.27以上（`go.mod`: `go 1.27.0`）。外部ライブラリは不要。
 
 ```sh
 go run ./examples/basic
@@ -76,6 +76,8 @@ go vet ./...
 
 ```text
 age=20: 2 rows
+  Alice (20)
+  Bob (20)
 duplicate primary key: rejected
 after reopen: 3 rows
 ```
@@ -87,6 +89,12 @@ import (
     "context"
     rdb "github.com/taako-502/go-rdbms-playground/rdb"
 )
+
+type User struct {
+    ID   int64  `rdb:"id"`
+    Name string `rdb:"name"`
+    Age  int64  `rdb:"age"`
+}
 
 ctx := context.Background()
 db, err := rdb.Open("./data")
@@ -115,23 +123,49 @@ err = db.Migrate(ctx,
 )
 if err != nil { return err }
 
-users, err := db.Table("users")
+users, err := db.Table[User]("users")
 if err != nil { return err }
-err = users.Insert(ctx, rdb.Row{"id": 1, "name": "Alice", "age": 20})
+err = users.Insert(ctx, User{ID: 1, Name: "Alice", Age: 20})
 if err != nil { return err }
 
-rows, err := users.Where(rdb.Equal("age", 20)).All(ctx)
+age, err := users.Column[int64]("age")
 if err != nil { return err }
-_ = rows
+
+rows, err := users.Where(rdb.Equal(age, 20)).All(ctx) // []User
+if err != nil { return err }
+for _, user := range rows {
+    _ = user.Name // string。型アサーション不要
+}
 ```
 
 - マイグレーションを使わず、`db.CreateTable(ctx, schema)`や`db.CreateIndex(ctx, table, column)`を直接呼び出すこともできる。
-- `Row`は`map[string]any`。整数入力は`int64`と`int`を受け付け、読み込み結果は`int64`に統一する。文字列は有効なUTF-8のみ受け付ける。
+- `db.Table[T](name)`はGo 1.27のジェネリックメソッド。`Insert(ctx, value)`は`T`を受け付け、`All(ctx)`は空の場合も非nilの`[]T`を返す。
+- `T`はフラットな構造体。公開フィールドに`rdb:"column"`タグを付ける。タグ省略時はGoのフィールド名をそのまま使用し、`rdb:"-"`で除外できる。埋め込み・ポインタ・非公開フィールドは除外指定がない限り拒否する。
+- 対応するフィールド型は`int64`・`string`・`bool`およびそれらを基底型とする名前付き型。型付きAPIの整数には`int`を使わない。文字列は有効なUTF-8のみ受け付ける。
+- `Table[T]`の取得時に、構造体と保存済みスキーマのカラム名・型・過不足を検証する。構造体と行の変換にはreflectionを使い、JSONへの再変換は挟まない。
+- `users.Column[V](name)`もジェネリックメソッド。モデルのフィールドと完全に同じGo型（名前付き型も含む）を指定し、`Field[T, V]`を取得する。名前や型の不一致はここでエラーになる。
+- `Equal(field, value)`の比較値は`V`、`Where`の条件は同じモデル`T`に限定される。別モデルの行・条件や、整数カラムと文字列の比較はコンパイルエラー。異なるDB・テーブルのフィールド流用は実行時に拒否する。
+- スキーマ定義に使う`rdb.Column`と、クエリ用の`rdb.Field[T,V]`は別の型。
+- 動的なマップ操作が必要な場合は`db.RawTable(name)`、`RawEqual(name, value)`を使用する。`Row`は`map[string]any`で、整数入力は`int64`と`int`、結果は`int64`。旧APIの`db.Table(name)`は`db.RawTable(name)`へ、文字列カラム指定の`Equal`は`RawEqual`へ変更する。
 - 行は定義されたカラムを過不足なく持つ必要がある。NULL・型変換・デフォルト値は非対応。
 - テーブル名とカラム名は`[A-Za-z_][A-Za-z0-9_]*`。インデックスはテーブル・カラムの組み合わせで識別する。
 - `users.All(ctx)`で全件取得。`Where`は不変のQueryを返し、条件のエラーは`All(ctx)`で返す。
 - `errors.Is`で`ErrDuplicate`、`ErrQuery`、`ErrNotFound`、`ErrNeedsRecovery`などを判定できる。
 - コンテキストは操作開始時と走査中に確認する。ロック待ちやOSのファイル書き込み・同期自体は中断しない。行の書き込み開始後は整合性維持のためインデックス保存まで進める。
+
+### コンパイル時に拒否される例
+
+```go
+users.Where(rdb.Equal(age, "20")) // ageはField[User, int64]なので文字列は渡せない
+users.Insert(ctx, OtherModel{})  // Table[User]には別のモデルを渡せない
+```
+
+## Go 1.27への更新
+
+- 型付きテーブルとカラムの取得にジェネリックメソッドを使用。
+- JSON読み書きは`encoding/json/v2`と`encoding/json/jsontext`を使用。重複キーと不正なUTF-8は拒否し、整数は`int64`へ直接読み込む。
+- 適用済みマイグレーションのチェックサム生成だけは、互換性維持のため従来の`encoding/json`によるバイト列を維持する。更新前のファイルを保存したfixtureで再Open・履歴照合・追記を検証する。
+- 並行テストに`sync.WaitGroup.Go`、型付きエラー取り出しに`errors.AsType`、ベンチマークに`testing.B.Loop`を採用。これらはGo 1.27以前に導入された機能も含む。
 
 ## 保存形式と復旧の詳細
 
@@ -161,13 +195,15 @@ go test ./rdb -run TestProcessCrashRecovery -v
 go test ./rdb -run '^$' -bench 'Benchmark(Lookup|Insert)' -benchmem -benchtime=20x
 ```
 
+型付きAPIのテストでは、正しいコードのビルド成功と、比較値・挿入モデル・条件モデル・取得結果の型を間違えたコードのビルド失敗も確認する。
+
 復旧テストは子プロセスを終了させ、行追記途中・行Sync後・インデックス一時ファイルSync後・rename後・マイグレーション変更後・履歴保存中の再起動を検証する。I/Oエラーを注入するテストでは、その後の操作拒否と再Openによる復旧も確認する。
 
-ベンチマークの初期データ投入と起動時構築は計測外。検索は同じカラム・条件について全件走査とインデックスを比較する。InsertはJSON Lines追記、Sync、B-tree全体保存、rename、ディレクトリSyncを含む。測定中は行数が増加するため、比較時は同じ`-benchtime=20x`を指定する。Goバージョン、OS、CPU、ファイルシステムに依存する結果として扱う。
+ベンチマークは型付きAPIで実行し、`b.Loop`によって初期データ投入・起動時構築・モデルの結び付け・カラム取得を計測外にする。検索は同じカラム・条件について全件走査とインデックスを比較する。InsertはJSON Lines追記、Sync、B-tree全体保存、rename、ディレクトリSyncを含む。測定中は行数が増加するため、比較時は同じ`-benchtime=20x`を指定する。Goバージョン、OS、CPU、ファイルシステムに依存する結果として扱う。
 
-### 測定例
+### 更新前の測定例（参考）
 
-Go 1.27.0 / darwin arm64 / Apple M4、`-benchtime=20x`。一時ディレクトリ上で実行し、ファイルシステム種別は未確認。短い単発測定であり、性能保証ではない。
+以下は型付きAPI・JSON v2への移行前の測定値。Go 1.27.0 / darwin arm64 / Apple M4、`-benchtime=20x`。一時ディレクトリ上で実行し、ファイルシステム種別は未確認。短い単発測定であり、性能保証ではない。
 
 | 操作 | 行数 | インデックス | 時間/操作 |
 | --- | ---: | --- | ---: |
@@ -179,3 +215,18 @@ Go 1.27.0 / darwin arm64 / Apple M4、`-benchtime=20x`。一時ディレクト�
 | Insert | 初期100 | 主キー＋名前 | 25.442 ms |
 | Insert | 初期1,000 | 主キーのみ | 18.199 ms |
 | Insert | 初期1,000 | 主キー＋名前 | 49.128 ms |
+
+### 型付きAPI・JSON v2移行後の測定例
+
+Go 1.27.0 / darwin arm64 / Apple M4、`-benchtime=20x`、`b.Loop`使用。初期データと検索条件は上記と同じだが、実行時の負荷や計測方式も影響するため、単発値から改善率は断定しない。
+
+| 操作 | 行数 | インデックス | 時間/操作 |
+| --- | ---: | --- | ---: |
+| 名前による検索 | 100 | なし（全件走査） | 0.088 ms |
+| 名前による検索 | 100 | あり | 0.0038 ms |
+| 名前による検索 | 1,000 | なし（全件走査） | 1.708 ms |
+| 名前による検索 | 1,000 | あり | 0.0048 ms |
+| Insert | 初期100 | 主キーのみ | 14.996 ms |
+| Insert | 初期100 | 主キー＋名前 | 24.132 ms |
+| Insert | 初期1,000 | 主キーのみ | 15.996 ms |
+| Insert | 初期1,000 | 主キー＋名前 | 28.960 ms |

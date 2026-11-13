@@ -1,21 +1,20 @@
 package rdb
 
 import (
-	"context"
 	"fmt"
 	"testing"
 )
 
 // Seed via rowStore to exclude quadratic, sync-per-insert setup from lookup
 // measurements. Close/Open builds and persists indexes before timing starts.
-func benchmarkDB(b *testing.B, n int, secondary bool) (*DB, *Table) {
+func benchmarkDB(b *testing.B, n int, secondary bool) (*DB, *Table[testUser]) {
 	b.Helper()
 	dir := b.TempDir()
 	db, err := Open(dir)
 	if err != nil {
 		b.Fatal(err)
 	}
-	ctx := context.Background()
+	ctx := b.Context()
 	if err = db.CreateTable(ctx, testSchema()); err != nil {
 		b.Fatal(err)
 	}
@@ -25,7 +24,7 @@ func benchmarkDB(b *testing.B, n int, secondary bool) (*DB, *Table) {
 		}
 	}
 	st := db.tables["users"]
-	for i := 0; i < n; i++ {
+	for i := range n {
 		row := testRow(int64(i))
 		row["name"] = fmt.Sprintf("user-%d", i)
 		if _, err = st.rows.append(row); err != nil {
@@ -40,7 +39,7 @@ func benchmarkDB(b *testing.B, n int, secondary bool) (*DB, *Table) {
 		b.Fatal(err)
 	}
 	b.Cleanup(func() { db.Close() })
-	tbl, err := db.Table("users")
+	tbl, err := db.Table[testUser]("users")
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -51,11 +50,14 @@ func BenchmarkLookup(b *testing.B) {
 		for _, indexed := range []bool{false, true} {
 			b.Run(fmt.Sprintf("rows=%d/index=%t", n, indexed), func(b *testing.B) {
 				_, tbl := benchmarkDB(b, n, indexed)
-				q := tbl.Where(Equal("name", fmt.Sprintf("user-%d", n/2)))
-				ctx := context.Background()
+				name, err := tbl.Column[string]("name")
+				if err != nil {
+					b.Fatal(err)
+				}
+				q := tbl.Where(Equal(name, fmt.Sprintf("user-%d", n/2)))
+				ctx := b.Context()
 				b.ReportAllocs()
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
+				for b.Loop() {
 					rows, err := q.All(ctx)
 					if err != nil || len(rows) != 1 {
 						b.Fatalf("%v %v", rows, err)
@@ -70,12 +72,12 @@ func BenchmarkInsert(b *testing.B) {
 		for _, secondary := range []bool{false, true} {
 			b.Run(fmt.Sprintf("initial_rows=%d/secondary=%t", n, secondary), func(b *testing.B) {
 				_, tbl := benchmarkDB(b, n, secondary)
-				ctx := context.Background()
+				ctx := b.Context()
 				b.ReportAllocs()
-				b.ResetTimer()
-				for i := 0; i < b.N; i++ {
-					r := testRow(int64(n + i))
-					r["name"] = fmt.Sprintf("user-%d", n+i)
+				i := n
+				for b.Loop() {
+					r := testUser{ID: int64(i), Name: fmt.Sprintf("user-%d", i), Active: true}
+					i++
 					if err := tbl.Insert(ctx, r); err != nil {
 						b.Fatal(err)
 					}

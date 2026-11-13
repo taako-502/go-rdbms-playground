@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "table": "users",
+  "column": "active",
+  "degree": 8,
+  "tree": {
+    "root": {
+      "entries": [
+        {
+          "key": {
+            "type": "boolean"
+          },
+          "offsets": [
+            0
+          ]
+        }
+      ]
+    }
+  }
+}
