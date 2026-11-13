@@ -25,7 +25,8 @@ go run ./cmd/explorer
 
 [http://127.0.0.1:8080](http://127.0.0.1:8080)を開く。データは`./data`に保存され、再起動後も残る。
 「ランダム入力」で行追加フォームにサンプル値を入力し、「行を保存」で追加できる。
-空のDBにはサンプルの`users`テーブルを作成する。既存DBを開く場合は`-data /path/to/db -demo=false`、ポート変更は`-port 8081`を指定する。
+デフォルトではサンプルのマイグレーションを適用し、`users`が空ならサンプル行を挿入する。既存の行は保持する。
+サンプルの自動適用・挿入を止める場合は`-demo=false`、保存先変更は`-data /path/to/db`、ポート変更は`-port 8081`を指定する。
 
 Go APIの使用例のみ実行する場合：
 
@@ -69,11 +70,28 @@ if err != nil { return err }
 
 ## マイグレーション
 
-`db.Migrate(ctx, migrations...)`に、`CreateTableOp`・`CreateIndexOp`を含むバージョン付きの定義を渡す。
-適用済みを含む全バージョンを毎回指定し、適用済みの定義は変更しない。
+サンプルの定義は[migrations/](migrations/)で管理する。
 
-バージョン順に実行し、変更の保存後に履歴を記録する。途中終了した場合は実際の定義と照合して再開し、不一致はエラーにする。
-`db.CreateTable`・`db.CreateIndex`を直接呼び出すこともできる。
+- `202611140001_create_users.go`：`users`テーブルを作成
+- `202611140002_create_users_age_index.go`：`age`インデックスを作成
+
+定義だけ適用してから、同じDBをブラウザで開く場合：
+
+```sh
+go run ./cmd/migrate -data ./data
+go run ./cmd/explorer -data ./data -demo=false
+```
+
+この場合、サンプル行は挿入しない。画面から行を追加できる。
+DBは1プロセスで使用するため、マイグレーションコマンドを実行する前にExplorerを停止する。
+
+変更を追加する場合は、`YYYYMMDDNNNN_変更内容.go`を追加し、ファイル名と同じ番号を`rdb.Migration.Version`に指定する。
+`CreateTableOp`・`CreateIndexOp`で定義し、`migrations/migrations.go`の`All()`に登録する。ファイル名だけでは自動登録されない。
+適用済みファイルは変更せず、既存より大きいバージョンで追加する。ロールバックは非対応。
+
+`db.Migrate`がバージョン順に適用し、履歴を保存先の`migrations.json`に記録する。再実行では適用済みをスキップし、定義の変更を検出した場合はエラーにする。
+途中終了した場合は実際の定義と照合して再開する。従来のExplorerが作成したテーブル・インデックスも、定義が一致すれば既存データを保持して履歴に登録する。
+
 
 ## 保存と復旧
 

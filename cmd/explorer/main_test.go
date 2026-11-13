@@ -39,7 +39,7 @@ func TestDemoSeedOnlyEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	tables, err := other.Tables(ctx)
-	if err != nil || len(tables) != 1 || tables[0].Schema.Name != "custom" {
+	if err != nil || len(tables) != 2 || tables[0].Schema.Name != "custom" {
 		t.Fatal(tables, err)
 	}
 }

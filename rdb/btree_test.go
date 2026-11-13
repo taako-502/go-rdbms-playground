@@ -1,7 +1,7 @@
 package rdb
 
 import (
-	"math/rand"
+	"math/rand/v2"
 	"reflect"
 	"testing"
 )
@@ -10,7 +10,7 @@ func TestBTreeSplits(t *testing.T) {
 	for _, order := range []string{"ascending", "descending", "random"} {
 		t.Run(order, func(t *testing.T) {
 			n := 5000
-			values := rand.New(rand.NewSource(42)).Perm(n)
+			values := rand.New(rand.NewPCG(42, 0)).Perm(n)
 			if order != "random" {
 				for i := range values {
 					values[i] = i
