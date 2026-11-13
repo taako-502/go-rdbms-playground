@@ -21,8 +21,17 @@
   - B-tree もデータとしてファイルに書き出す。
 - 同時アクセス: 1プロセスのみ。同時操作はロックで直列化
 
-## SQLは利用しない
-### query
+## 実装対象
+
+Query系関数の実装対象
+- Where
+- Equal
+- All
+
+Command系関数の実装対象
+- Insert
+
+## Query 発行イメージ
 
 `Where`関数のみサポートする。比較演算子は`Equal`のみサポートする。
 
@@ -33,4 +42,3 @@ result, err := query.All(ctx)
 ```
 
 `And`、`Or`、`Join`、`GroupBy`なども対応しません。
-
