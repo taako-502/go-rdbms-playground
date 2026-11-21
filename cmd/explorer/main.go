@@ -27,18 +27,29 @@ func run() error {
 	data := flag.String("data", "./data", "database directory")
 	port := flag.Int("port", 8080, "localhost HTTP port")
 	demo := flag.Bool("demo", true, "apply sample migrations and seed an empty users table")
+	role := flag.String("role", "", "replication role: primary or secondary")
+	upstream := flag.String("upstream", "", "primary URL for a secondary")
 	flag.Parse()
+	if (*role == "secondary") != (*upstream != "") {
+		return fmt.Errorf("secondary requires -upstream; other roles must omit it")
+	}
 	if *port < 1 || *port > 65535 {
 		return fmt.Errorf("port must be between 1 and 65535")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	db, err := rdb.Open(*data)
+	var db *rdb.DB
+	var err error
+	if *role == "" {
+		db, err = rdb.Open(*data)
+	} else {
+		db, err = rdb.OpenReplica(*data, *role)
+	}
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	if *demo {
+	if *demo && *role == "" {
 		if err = seed(ctx, db); err != nil {
 			return err
 		}
@@ -47,7 +58,18 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Handler: explorer.New(db), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	mux := http.NewServeMux()
+	mux.Handle("/", explorer.New(db))
+	if *role == "primary" {
+		mux.HandleFunc("GET /replication/log", logHandler(db))
+	}
+	if *role == "secondary" {
+		workerCtx, cancel := context.WithCancel(ctx)
+		finished := make(chan struct{})
+		go func() { defer close(finished); follow(workerCtx, db, *upstream) }()
+		defer func() { cancel(); <-finished }()
+	}
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	log.Printf("Database explorer: http://%s (data: %s)", listener.Addr(), *data)

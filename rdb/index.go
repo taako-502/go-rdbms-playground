@@ -34,6 +34,9 @@ func (db *DB) buildIndexes(ctx context.Context, st *tableState, recoverTail bool
 func (db *DB) CreateIndex(ctx context.Context, table, column string) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
+	if db.role != "" {
+		return ErrReplicaReadOnly
+	}
 	return db.createIndex(ctx, table, column)
 }
 func (db *DB) createIndex(ctx context.Context, table, column string) error {
