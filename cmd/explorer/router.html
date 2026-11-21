@@ -308,6 +308,9 @@
       const m = catalog.shards[i],
         a = document.createElement("a");
       a.href = m.URL + "/?table=" + encodeURIComponent(schema.name);
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.title = "シャードのExplorerを新しいタブで開く";
       a.textContent = m.ID;
       a.className = "shard";
       a.dataset.slot = i;
