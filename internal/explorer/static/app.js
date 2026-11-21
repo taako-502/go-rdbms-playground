@@ -337,3 +337,33 @@ document.querySelectorAll('[data-reset]').forEach(button => {
     }
   });
 });
+
+let wipeDirectory = '';
+async function loadWipeDirectory() {
+  try {
+    const result = await request('/api/settings/wipe');
+    wipeDirectory = result.directory;
+    $('wipe-directory').textContent = '保存先 ' + wipeDirectory;
+    $('wipe-node').hidden = false;
+  } catch {
+    // The host may run Explorer without the shutdown action.
+  }
+}
+loadWipeDirectory();
+$('wipe-node').addEventListener('click', async () => {
+  if (state.busy || !wipeDirectory) return;
+  const message = wipeDirectory + ' のデータと複製ログを削除し、このExplorerを停止します。ほかのノードには旧データが残ります。実行しますか？';
+  if (!window.confirm(message)) return;
+  $('settings').close();
+  busy(true);
+  try {
+    await request('/api/settings/wipe', { method: 'POST' });
+    $('table-content').hidden = true;
+    $('replication').hidden = true;
+    $('tables').replaceChildren();
+    notice('完全初期化しました。同じ保存先でマイグレーションを実行できます。');
+  } catch (error) {
+    notice(error.message, true);
+    busy(false);
+  }
+});

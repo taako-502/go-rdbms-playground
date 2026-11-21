@@ -115,6 +115,8 @@ go test ./rdb -run '^$' -bench 'Benchmark(Lookup|Insert)' -benchmem -benchtime=2
 
 Explorerの「設定」から、全テーブルの行を削除するか、テーブル定義・インデックス・マイグレーション履歴も初期化できる。単体起動で空の状態を維持するには `-demo=false` を使う。複製構成ではPrimaryで実行し、Secondaryにも順次適用される。過去の複製ログは保持される。初期化後に複製構成でスキーマを作り直す場合は、新しい保存先を使う。
 
+「このノードを完全初期化」は、表示中のノードの複製情報とログを含むDBファイルを削除してExplorerを停止する。同じ保存先に `cmd/migrate` を実行できる。別ノードのデータは残る。Primaryを作り直したら、Secondaryは新しいスナップショットから準備する。
+
 ## 非同期レプリケーション
 
 Primaryだけが書き込みを受け付ける。SecondaryはHTTPでログを取得し、ローカルのB-treeから検索できる。Secondaryの台数上限は設けない。複製中はスキーマ固定で、自動昇格は行わない。Primaryで成功した直後の行はSecondaryにまだ届いていない場合がある。

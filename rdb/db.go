@@ -79,6 +79,9 @@ func open(dir, role string) (*DB, error) {
 	if err = syncDir(filepath.Dir(abs)); err != nil {
 		return nil, err
 	}
+	if err = finishWipe(abs); err != nil {
+		return nil, err
+	}
 	b, err := os.ReadFile(filepath.Join(abs, "catalog.json"))
 	if errors.Is(err, os.ErrNotExist) {
 		matches, e := filepath.Glob(filepath.Join(abs, "*.jsonl"))
@@ -163,6 +166,10 @@ func (db *DB) hit(point string) error {
 func (db *DB) Close() error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
+	return db.closeLocked()
+}
+
+func (db *DB) closeLocked() error {
 	if db.closed {
 		return nil
 	}

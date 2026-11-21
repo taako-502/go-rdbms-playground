@@ -21,6 +21,10 @@ var assets embed.FS
 type server struct{ db *rdb.DB }
 
 func New(db *rdb.DB) http.Handler {
+	return NewWithWipe(db, nil)
+}
+
+func NewWithWipe(db *rdb.DB, shutdown func()) http.Handler {
 	s := &server{db: db}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/tables", s.tables)
@@ -28,6 +32,19 @@ func New(db *rdb.DB) http.Handler {
 	mux.HandleFunc("GET /api/tables/{table}/rows", s.rows)
 	mux.HandleFunc("POST /api/tables/{table}/rows", s.insert)
 	mux.HandleFunc("POST /api/settings/reset/{mode}", s.reset)
+	if shutdown != nil {
+		mux.HandleFunc("GET /api/settings/wipe", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]string{"directory": db.Directory()})
+		})
+		mux.HandleFunc("POST /api/settings/wipe", func(w http.ResponseWriter, r *http.Request) {
+			if err := db.Wipe(r.Context()); err != nil {
+				fail(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, struct{}{})
+			shutdown()
+		})
+	}
 	static, err := fs.Sub(assets, "static")
 	if err != nil {
 		panic(err)
