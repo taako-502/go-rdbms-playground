@@ -61,7 +61,7 @@ func run() error {
 	mux := http.NewServeMux()
 	mux.Handle("/", explorer.NewWithWipe(db, stop))
 	monitor := newReplicaMonitor()
-	mux.HandleFunc("GET /api/replication/status", monitor.status(db, *role, *port))
+	mux.HandleFunc("GET /api/replication/status", monitor.status(db, *role, *port, primaryLink(*upstream)))
 	if *role == "primary" {
 		mux.HandleFunc("GET /replication/log", logHandler(db, monitor))
 	}

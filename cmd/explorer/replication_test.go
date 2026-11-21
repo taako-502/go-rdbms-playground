@@ -71,7 +71,7 @@ func TestReplicaCatchUp(t *testing.T) {
 	syncReplica(first, 8081)
 	syncReplica(first, 8081)
 	w := httptest.NewRecorder()
-	monitor.status(primary, "primary", 8080)(w, httptest.NewRequest("GET", "/api/replication/status", nil))
+	monitor.status(primary, "primary", 8080, "")(w, httptest.NewRequest("GET", "/api/replication/status", nil))
 	var snapshot struct{ Nodes []nodeStatus }
 	if err := json.Unmarshal(w.Body.Bytes(), &snapshot); err != nil {
 		t.Fatal(err)
@@ -113,4 +113,22 @@ func TestReplicaCatchUp(t *testing.T) {
 		}
 	}
 
+}
+
+func TestSecondaryPrimaryLink(t *testing.T) {
+	db, err := rdb.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	w := httptest.NewRecorder()
+	upstream := primaryLink("https://user:pass@localhost:8080/?token=secret")
+	newReplicaMonitor().status(db, "secondary", 8081, upstream)(w, httptest.NewRequest("GET", "/api/replication/status", nil))
+	var status struct{ PrimaryURL string }
+	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
+		t.Fatal(err)
+	}
+	if status.PrimaryURL != "https://localhost:8080/" {
+		t.Fatalf("unexpected Primary URL: %q", status.PrimaryURL)
+	}
 }

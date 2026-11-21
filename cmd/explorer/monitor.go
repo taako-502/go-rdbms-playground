@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 	"sync"
@@ -35,7 +36,7 @@ type nodeStatus struct {
 	LastSeen *time.Time
 }
 
-func (m *replicaMonitor) status(db *rdb.DB, role string, port int) http.HandlerFunc {
+func (m *replicaMonitor) status(db *rdb.DB, role string, port int, upstream string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		m.mu.Lock()
 		pos := db.Position()
@@ -48,8 +49,21 @@ func (m *replicaMonitor) status(db *rdb.DB, role string, port int) http.HandlerF
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		json.NewEncoder(w).Encode(struct {
-			Role  string
-			Nodes []nodeStatus
-		}{role, nodes})
+			Role       string
+			Nodes      []nodeStatus
+			PrimaryURL string `json:",omitempty"`
+		}{role, nodes, upstream})
 	}
+}
+
+func primaryLink(upstream string) string {
+	u, err := url.Parse(upstream)
+	if err != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return ""
+	}
+	u.User = nil
+	u.RawQuery = ""
+	u.ForceQuery = false
+	u.Fragment = ""
+	return u.String()
 }

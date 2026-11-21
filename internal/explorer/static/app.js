@@ -287,6 +287,12 @@ async function updateReplicaStatus() {
     if (!status.Role) return;
     $('replication').hidden = false;
     const secondary = status.Role === 'secondary';
+    const primaryLink = $('primary-link');
+    primaryLink.hidden = !(secondary && status.PrimaryURL);
+    if (!primaryLink.hidden) {
+      primaryLink.href = status.PrimaryURL;
+      primaryLink.textContent = 'Primaryに戻る (' + status.PrimaryURL + ')';
+    }
     document.querySelector('.insert-panel').hidden = secondary;
     $('reset-actions').hidden = secondary;
     $('reset-readonly').hidden = !secondary;
