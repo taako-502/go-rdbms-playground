@@ -280,3 +280,35 @@ $('insert-form').addEventListener('submit', async event => {
   } finally { busy(false); }
 });
 refresh();
+
+async function updateReplicaStatus() {
+  try {
+    const status = await request('/api/replication/status');
+    if (!status.Role) return;
+    $('replication').hidden = false;
+    const secondary = status.Role === 'secondary';
+    document.querySelector('.insert-panel').hidden = secondary;
+    $('replica-state').textContent = secondary ? 'このノードは読み取り専用' : '直近の報告値・2秒ごとに更新';
+    const rows = status.Nodes.map(node => {
+      const row = document.createElement('tr');
+      const url = new URL(location.origin);
+      url.port = node.Port;
+      const link = document.createElement('a');
+      link.href = url.href;
+      link.textContent = node.Role + ' · ' + node.Port;
+      row.insertCell().append(link);
+      row.insertCell().textContent = node.LSN;
+      row.insertCell().textContent = node.Lag || '—';
+      const seen = node.LastSeen && new Date(node.LastSeen);
+      row.insertCell().textContent = seen
+        ? seen.toLocaleTimeString() + (Date.now() - seen.getTime() > 5000 ? '（応答待ち）' : '')
+        : 'このノード';
+      return row;
+    });
+    $('replica-nodes').replaceChildren(...rows);
+  } catch {
+    $('replica-state').textContent = '更新失敗';
+  }
+  setTimeout(updateReplicaStatus, 2000);
+}
+updateReplicaStatus();

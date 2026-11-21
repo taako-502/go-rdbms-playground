@@ -60,13 +60,15 @@ func run() error {
 	}
 	mux := http.NewServeMux()
 	mux.Handle("/", explorer.New(db))
+	monitor := newReplicaMonitor()
+	mux.HandleFunc("GET /api/replication/status", monitor.status(db, *role, *port))
 	if *role == "primary" {
-		mux.HandleFunc("GET /replication/log", logHandler(db))
+		mux.HandleFunc("GET /replication/log", logHandler(db, monitor))
 	}
 	if *role == "secondary" {
 		workerCtx, cancel := context.WithCancel(ctx)
 		finished := make(chan struct{})
-		go func() { defer close(finished); follow(workerCtx, db, *upstream) }()
+		go func() { defer close(finished); follow(workerCtx, db, *upstream, *port) }()
 		defer func() { cancel(); <-finished }()
 	}
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}

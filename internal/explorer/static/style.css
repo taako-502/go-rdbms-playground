@@ -153,3 +153,7 @@
   box-shadow:0 4px 20px #183b3026;
   pointer-events:none;
 }
+
+#replication { margin-bottom: 20px; }
+#replica-nodes a { color: var(--accent, #315fb2); }
+.content-grid:has(.insert-panel[hidden]) { grid-template-columns: 1fr; }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -47,10 +48,11 @@ func TestReplicaCatchUp(t *testing.T) {
 	primary := open(dir, "primary")
 	first := open(a, "secondary")
 	second := open(b, "secondary")
-	client := &http.Client{Transport: handlerTransport{logHandler(primary)}}
-	syncReplica := func(db *rdb.DB) {
+	monitor := newReplicaMonitor()
+	client := &http.Client{Transport: handlerTransport{logHandler(primary, monitor)}}
+	syncReplica := func(db *rdb.DB, port int) {
 		t.Helper()
-		if _, err := pull(ctx, db, "http://primary", client); err != nil {
+		if _, err := pull(ctx, db, "http://primary", client, port); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -62,13 +64,24 @@ func TestReplicaCatchUp(t *testing.T) {
 		}
 	}
 	insert(4)
-	syncReplica(first)
-	syncReplica(second)
+	syncReplica(first, 8081)
+	syncReplica(second, 8082)
 	second.Close()
 	insert(5)
-	syncReplica(first)
+	syncReplica(first, 8081)
+	syncReplica(first, 8081)
+	w := httptest.NewRecorder()
+	monitor.status(primary, "primary", 8080)(w, httptest.NewRequest("GET", "/api/replication/status", nil))
+	var snapshot struct{ Nodes []nodeStatus }
+	if err := json.Unmarshal(w.Body.Bytes(), &snapshot); err != nil {
+		t.Fatal(err)
+	}
+	nodes := snapshot.Nodes
+	if len(nodes) != 3 || nodes[0].LSN != "2" || nodes[1].Lag != "0" || nodes[2].Port != 8082 || nodes[2].Lag != "2" || nodes[2].LastSeen == nil {
+		t.Fatalf("unexpected snapshot: %+v", nodes)
+	}
 	second = open(b, "secondary")
-	syncReplica(second)
+	syncReplica(second, 8082)
 	for _, node := range []*rdb.DB{primary, first, second} {
 		users, _ := node.RawTable("users")
 		rows, err := users.Where(rdb.RawEqual("id", int64(5))).All(ctx)

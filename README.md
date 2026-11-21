@@ -130,3 +130,5 @@ go run ./cmd/explorer -role secondary -upstream http://localhost:8080 -port 8082
 ```
 
 各プロセスは専用ディレクトリを使用する。初版ではPrimaryのログを全件保持する。
+
+PrimaryのExplorerに、通信したSecondaryのポート、最後に報告した適用済みLSN、Primaryとの差、最終通信時刻を表示する。ノード名をクリックすると、そのノードの行データ・スキーマ・B-treeを確認できる。一覧はPrimaryの起動中に受けた報告から作り、2秒ごとに表示を更新する。

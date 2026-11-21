@@ -14,7 +14,7 @@ import (
 	"github.com/taako-502/go-rdbms-playground/rdb"
 )
 
-func logHandler(db *rdb.DB) http.HandlerFunc {
+func logHandler(db *rdb.DB, monitor *replicaMonitor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		after, err := strconv.ParseUint(q.Get("after"), 10, 64)
@@ -27,14 +27,18 @@ func logHandler(db *rdb.DB) http.HandlerFunc {
 			http.Error(w, err.Error(), 409)
 			return
 		}
+		port, _ := strconv.Atoi(q.Get("port"))
+		if port > 0 && port <= 65535 {
+			monitor.observe(port, after, time.Now())
+		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
 		json.NewEncoder(w).Encode(entries)
 	}
 }
-func pull(ctx context.Context, db *rdb.DB, upstream string, client *http.Client) (int, error) {
+func pull(ctx context.Context, db *rdb.DB, upstream string, client *http.Client, port int) (int, error) {
 	p := db.Position()
-	endpoint := fmt.Sprintf("%s/replication/log?source=%s&after=%d", strings.TrimRight(upstream, "/"), url.QueryEscape(p.Source), p.LSN)
+	endpoint := fmt.Sprintf("%s/replication/log?source=%s&after=%d&port=%d", strings.TrimRight(upstream, "/"), url.QueryEscape(p.Source), p.LSN, port)
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		return 0, err
@@ -53,10 +57,10 @@ func pull(ctx context.Context, db *rdb.DB, upstream string, client *http.Client)
 	}
 	return len(entries), db.ApplyEntries(ctx, p, entries)
 }
-func follow(ctx context.Context, db *rdb.DB, upstream string) {
+func follow(ctx context.Context, db *rdb.DB, upstream string, port int) {
 	client := &http.Client{Timeout: 15 * time.Second}
 	for ctx.Err() == nil {
-		n, err := pull(ctx, db, upstream, client)
+		n, err := pull(ctx, db, upstream, client, port)
 		if err != nil {
 			log.Printf("replication: %v", err)
 		} else if n > 0 {
