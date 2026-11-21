@@ -5,75 +5,289 @@
     content="width=device-width,initial-scale=1"
   /><title>シャードルーター</title>
   <style>
-    body {
-      font: 16px system-ui;
-      color: #223348;
-      background: #f3f5f7;
-      max-width: 62rem;
-      margin: auto;
-      padding: 1.5rem;
+    :root {
+      color-scheme: dark;
+      --bg: #111820;
+      --panel: #19232d;
+      --line: #354451;
+      --muted: #aebcc6;
+      --mint: #85e8c6;
+      --blue: #9dc4ff;
     }
-    section {
-      background: white;
-      border: 1px solid #ccd7de;
-      border-radius: 8px;
-      padding: 1rem;
-      margin: 1rem 0;
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: #f1f5f7;
+      font:
+        15px/1.6 "Inter",
+        "Hiragino Sans",
+        system-ui,
+        sans-serif;
+    }
+    main {
+      width: min(1080px, 100%);
+      margin: auto;
+      padding: clamp(20px, 5vw, 64px) clamp(16px, 4vw, 48px);
+    }
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 20px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+    }
+    h1,
+    h2,
+    p {
+      margin: 0;
+    }
+    h1 {
+      font-size: clamp(25px, 4vw, 40px);
+      line-height: 1.2;
+      letter-spacing: -0.045em;
+    }
+    h2 {
+      font-size: 19px;
+      letter-spacing: 0.015em;
+    }
+    header label {
+      min-width: 145px;
     }
     label {
-      display: inline-grid;
-      gap: 0.2rem;
-      margin: 0.3rem;
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
     }
     input,
     select,
     button {
       font: inherit;
-      padding: 0.4rem;
+      border-radius: 7px;
+      padding: 10px 12px;
+    }
+    input,
+    select {
+      width: 100%;
+      min-width: 0;
+      background: #101820;
+      border: 1px solid #4b5a66;
+      color: #f5f7f9;
+      font-family: ui-monospace, monospace;
+    }
+    :focus-visible {
+      outline: 2px solid var(--mint);
+      outline-offset: 3px;
+    }
+    section {
+      margin-top: 26px;
+    }
+    #members,
+    .workspace,
+    #fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    #members {
+      margin-top: 12px;
+    }
+    #members a {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 16px 20px;
+      color: var(--accent);
+      text-decoration: none;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    #members a:hover {
+      background: #23313d;
+    }
+    #members a::after {
+      content: "↗";
+      margin-left: auto;
+    }
+    #members strong {
+      font:
+        600 27px/1.4 ui-monospace,
+        monospace;
+      color: white;
+    }
+    [data-slot="0"] {
+      --accent: var(--mint);
+    }
+    [data-slot="1"] {
+      --accent: var(--blue);
+    }
+    .shard {
+      font:
+        600 15px ui-monospace,
+        monospace;
+      color: var(--accent);
+      margin-right: 8px;
+    }
+    .workspace {
+      align-items: start;
+      gap: 18px;
+    }
+    .panel {
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: clamp(16px, 2.5vw, 26px);
+    }
+    .panel h2 {
+      margin-bottom: 20px;
+    }
+    #fields,
+    #search {
+      gap: 12px;
+    }
+    #search {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
     }
     button {
+      background: var(--mint);
+      color: #10251f;
+      border: 0;
+      font-weight: 700;
       cursor: pointer;
+    }
+    button:hover {
+      filter: brightness(1.08);
+    }
+    button:disabled {
+      opacity: 0.55;
+    }
+    #search button {
+      grid-column: 1/-1;
+      background: #d0e2fb;
+    }
+    #insert button {
+      width: 100%;
     }
     output {
       display: block;
-      margin: 0.5rem;
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+    #preview {
+      padding: 12px;
+      margin: 16px 0;
+      background: #111a22;
+      border-radius: 6px;
+    }
+    #saved:not(:empty),
+    #trace:not(:empty) {
+      margin-top: 14px;
+    }
+    #trace {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    #trace span {
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--accent);
+    }
+    #trace .skipped {
+      color: var(--muted);
+      border-style: dashed;
+    }
+    .scroll {
+      overflow: auto;
     }
     table {
       border-collapse: collapse;
+      width: 100%;
+      font:
+        13px/1.6 ui-monospace,
+        monospace;
     }
     td,
     th {
-      padding: 0.4rem;
-      border: 1px solid #ddd;
+      padding: 9px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
     }
-    a {
-      margin-right: 1rem;
+    th {
+      color: var(--muted);
+    }
+    #error:not(:empty) {
+      margin-top: 16px;
+      color: #ffbcae;
+    }
+    @media (max-width: 720px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+      .panel {
+        margin-top: 16px;
+      }
+      .workspace {
+        gap: 0;
+      }
+    }
+    @media (max-width: 480px) {
+      header {
+        align-items: start;
+        flex-direction: column;
+      }
+      #members {
+        gap: 8px;
+      }
+      #members a {
+        padding: 10px;
+      }
+      #members .shard {
+        width: 100%;
+      }
     }
   </style>
-  <h1>シャードルーター</h1>
-  <label>テーブル<select id="tables"></select></label>
-  <section>
-    <h2>シャード別の行数</h2>
-    <div id="members"></div>
-  </section>
-  <section>
-    <h2>行を追加</h2>
-    <form id="insert">
-      <div id="fields"></div>
-      <output id="preview"></output><button>行を保存</button>
-    </form>
-    <output id="saved" aria-live="polite"></output>
-  </section>
-  <section>
-    <h2>検索</h2>
-    <form id="search">
-      <label>カラム<select id="column"></select></label
-      ><label>値<input id="value" /></label><button>検索</button>
-    </form>
-    <output id="trace"></output>
-    <table id="rows"></table>
-  </section>
-  <p role="alert" id="error"></p>
+  <main>
+    <header>
+      <h1>シャードルーター</h1>
+      <label>テーブル<select id="tables"></select></label>
+    </header>
+    <section>
+      <h2>シャード別の行数</h2>
+      <div id="members"></div>
+    </section>
+    <div class="workspace">
+      <section class="panel">
+        <h2>行を追加</h2>
+        <form id="insert">
+          <div id="fields"></div>
+          <output id="preview"></output><button>行を保存</button>
+        </form>
+        <output id="saved" aria-live="polite"></output>
+      </section>
+      <section class="panel">
+        <h2>検索</h2>
+        <form id="search">
+          <label>カラム<select id="column"></select></label
+          ><label>値<input id="value" /></label><button>検索</button>
+        </form>
+        <output id="trace"></output>
+        <div class="scroll"><table id="rows"></table></div>
+      </section>
+    </div>
+    <p role="alert" id="error"></p>
+  </main>
   <script>
     const el = (id) => document.getElementById(id);
     let catalog,
@@ -95,6 +309,8 @@
         a = document.createElement("a");
       a.href = m.URL + "/?table=" + encodeURIComponent(schema.name);
       a.textContent = m.ID;
+      a.className = "shard";
+      a.dataset.slot = i;
       return a;
     }
     async function counts() {
@@ -103,8 +319,13 @@
       if (id !== countId) return;
       el("members").replaceChildren(
         ...rows.map((group, i) => {
-          const item = document.createElement("p");
-          item.append(link(i), group.length + " 件");
+          const item = link(i);
+          const name = document.createElement("span");
+          name.className = "shard";
+          name.textContent = item.textContent;
+          const count = document.createElement("strong");
+          count.textContent = group.length.toLocaleString("ja-JP");
+          item.replaceChildren(name, count, "件");
           return item;
         }),
       );
@@ -113,6 +334,14 @@
       const id = ++previewId;
       try {
         const v = el("insert").elements.namedItem(schema.primary_key).value;
+        if (
+          v === "" &&
+          schema.columns.find((c) => c.name === schema.primary_key).type ===
+            "integer"
+        ) {
+          el("preview").textContent = "主キーを入力すると保存先を表示します。";
+          return;
+        }
         const r = await api(
           "/preview/" + schema.name + "?" + new URLSearchParams({ value: v }),
         );
@@ -187,14 +416,18 @@
         });
         const groups = await api("/rows/" + schema.name + "?" + params);
         if (id !== queryId) return;
-        el("trace").textContent = groups
-          .map(
-            (g, i) =>
+        el("trace").replaceChildren(
+          ...groups.map((group, i) => {
+            const tag = document.createElement("span");
+            tag.dataset.slot = i;
+            if (group === null) tag.className = "skipped";
+            tag.textContent =
               catalog.shards[i].ID +
-              "　" +
-              (g === null ? "未問い合わせ" : g.length + " 件"),
-          )
-          .join(" ／ ");
+              " · " +
+              (group === null ? "未問い合わせ" : group.length + " 件");
+            return tag;
+          }),
+        );
         const header = el("rows").insertRow();
         for (const c of schema.columns)
           header.append(
