@@ -119,14 +119,14 @@ Primaryだけが書き込みを受け付ける。SecondaryはHTTPでログを取
 
 初回は次の順に準備する。コピー先には新しいディレクトリを使う。
 
-1. `go run ./cmd/migrate -data ./primary` でスキーマを用意する。
-2. `go run ./cmd/explorer -role primary -data ./primary` を起動して Ctrl+C で停止する。
-3. 停止中に `cp -R primary secondary1` と `cp -R primary secondary2` を実行する。これで行・インデックスと複製元ID・適用済みLSNを同じ時点でコピーできる。
+1. `go run ./cmd/migrate -data ./data/primary` でスキーマを用意する。
+2. `go run ./cmd/explorer -role primary -data ./data/primary` を起動して Ctrl+C で停止する。
+3. 停止中に `cp -R ./data/primary ./data/secondary1` と `cp -R ./data/primary ./data/secondary2` を実行する。これで行・インデックスと複製元ID・適用済みLSNを同じ時点でコピーできる。
 4. Primaryを同じコマンドで再起動する。別端末で次のコマンドをそれぞれ実行する。
 
 ```sh
-go run ./cmd/explorer -role secondary -upstream http://localhost:8080 -port 8081 -data ./secondary1
-go run ./cmd/explorer -role secondary -upstream http://localhost:8080 -port 8082 -data ./secondary2
+go run ./cmd/explorer -role secondary -upstream http://localhost:8080 -port 8081 -data ./data/secondary1
+go run ./cmd/explorer -role secondary -upstream http://localhost:8080 -port 8082 -data ./data/secondary2
 ```
 
 各プロセスは専用ディレクトリを使用する。初版ではPrimaryのログを全件保持する。
