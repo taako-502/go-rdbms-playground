@@ -44,9 +44,10 @@ type nodeStatus struct {
 	LastSeen *time.Time
 }
 
-func (m *replicaMonitor) status(db *rdb.DB, role string, port int, upstream string) http.HandlerFunc {
+func (m *replicaMonitor) status(db *rdb.DB, port int, upstream string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		m.mu.Lock()
+		role := db.Role()
 		pos := db.Position()
 		nodes := []nodeStatus{{Role: role, Port: port, LSN: strconv.FormatUint(pos.LSN, 10)}}
 		for port, peer := range m.peers {

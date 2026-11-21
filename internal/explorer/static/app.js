@@ -284,7 +284,15 @@ refresh();
 async function updateReplicaStatus() {
   try {
     const status = await request('/api/replication/status');
-    if (!status.Role) return;
+    const toggle = $('replica-mode');
+    toggle.hidden = status.Role === 'secondary';
+    toggle.dataset.enabled = String(status.Role === 'primary');
+    toggle.textContent = status.Role === 'primary' ? 'レプリカセットをOFFにする' : 'レプリカセットをONにする';
+    if (!status.Role) {
+      $('replication').hidden = true;
+      $('wipe-cluster').hidden = true;
+      return;
+    }
     $('replication').hidden = false;
     const secondary = status.Role === 'secondary';
     $('wipe-cluster').hidden = status.Role !== 'primary';
@@ -388,6 +396,32 @@ $('wipe-cluster').addEventListener('click', async () => {
     notice('レプリカセットを完全初期化しました。');
   } catch (error) {
     notice(error.message, true);
+    busy(false);
+  }
+});
+
+$('replica-mode').addEventListener('click', async () => {
+  if (state.busy) return;
+  const enabled = $('replica-mode').dataset.enabled === 'true';
+  busy(true);
+  try {
+    const path = '/api/settings/replication/' + (enabled ? 'off' : 'on');
+    if (enabled) {
+      const plan = await request(path);
+      const targets = plan.Targets.map(node => node.Directory + ' (port ' + node.Port + ')');
+      const description = targets.length ? '次のSecondaryを停止し、DBを削除します。\n' + targets.join('\n') : '登録済みのSecondaryはありません。';
+      if (!window.confirm(description + '\nPrimaryのテーブルとデータを保持して、レプリカセットをOFFにしますか？')) return;
+      await request(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(plan)});
+    } else {
+      await request(path, {method: 'POST'});
+    }
+    $('settings').close();
+    notice(enabled ? '単体DBに切り替えました。' : 'このDBをPrimaryに切り替えました。');
+  } catch (error) {
+    $('settings').close();
+    notice(error.message, true);
+  } finally {
+    await updateReplicaStatus();
     busy(false);
   }
 });

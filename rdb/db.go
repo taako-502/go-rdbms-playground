@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -130,6 +131,31 @@ func open(dir, role string) (*DB, error) {
 	}
 	if err = db.loadHistory(); err != nil {
 		return nil, err
+	}
+	if strings.HasPrefix(role, "explorer-") {
+		role = strings.TrimPrefix(role, "explorer-")
+		data, readErr := os.ReadFile(filepath.Join(abs, modeFile))
+		if readErr == nil {
+			var mode string
+			if err = json.Unmarshal(data, &mode); err != nil {
+				return nil, err
+			}
+			switch mode {
+			case "primary":
+				role = "primary"
+			case "standalone":
+				role = ""
+			case "disabling":
+				role = ""
+				if err = db.disableReplication(); err != nil {
+					return nil, err
+				}
+			default:
+				return nil, ErrCorrupt
+			}
+		} else if !errors.Is(readErr, os.ErrNotExist) {
+			return nil, readErr
+		}
 	}
 	if err = db.initReplication(role); err != nil {
 		return nil, err

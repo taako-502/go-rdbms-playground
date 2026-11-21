@@ -38,18 +38,12 @@ func run() error {
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	var db *rdb.DB
-	var err error
-	if *role == "" {
-		db, err = rdb.Open(*data)
-	} else {
-		db, err = rdb.OpenReplica(*data, *role)
-	}
+	db, err := rdb.OpenExplorer(*data, *role)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	if *demo && *role == "" {
+	if *demo && db.Role() == "" {
 		if err = seed(ctx, db); err != nil {
 			return err
 		}
@@ -70,13 +64,18 @@ func run() error {
 		ui.ServeHTTP(w, r)
 	})
 	mux.Handle("/", ui)
-	mux.HandleFunc("GET /api/replication/status", monitor.status(db, *role, *port, primaryLink(*upstream)))
-	if *role == "primary" {
-		if err := monitor.loadPeers(db.Directory()); err != nil {
-			listener.Close()
-			return err
+	mux.HandleFunc("GET /api/replication/status", monitor.status(db, *port, primaryLink(*upstream)))
+	if *role != "secondary" {
+		if db.Role() == "primary" {
+			if err := monitor.loadPeers(db.Directory()); err != nil {
+				listener.Close()
+				return err
+			}
 		}
 		protection := http.NewCrossOriginProtection()
+		mux.Handle("POST /api/settings/replication/on", protection.Handler(monitor.enableReplication(db)))
+		mux.Handle("GET /api/settings/replication/off", protection.Handler(monitor.disablePreview(db, localPeerClient())))
+		mux.Handle("POST /api/settings/replication/off", protection.Handler(monitor.clusterAction(db, nil, localPeerClient())))
 		mux.Handle("POST /api/settings/wipe-cluster", protection.Handler(monitor.wipeCluster(db, stop, localPeerClient())))
 		mux.HandleFunc("GET /replication/log", logHandler(db, monitor))
 	}

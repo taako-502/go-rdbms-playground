@@ -71,7 +71,7 @@ func TestReplicaCatchUp(t *testing.T) {
 	syncReplica(first, 8081)
 	syncReplica(first, 8081)
 	w := httptest.NewRecorder()
-	monitor.status(primary, "primary", 8080, "")(w, httptest.NewRequest("GET", "/api/replication/status", nil))
+	monitor.status(primary, 8080, "")(w, httptest.NewRequest("GET", "/api/replication/status", nil))
 	var snapshot struct{ Nodes []nodeStatus }
 	if err := json.Unmarshal(w.Body.Bytes(), &snapshot); err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestSecondaryPrimaryLink(t *testing.T) {
 	defer db.Close()
 	w := httptest.NewRecorder()
 	upstream := primaryLink("https://user:pass@localhost:8080/?token=secret")
-	newReplicaMonitor().status(db, "secondary", 8081, upstream)(w, httptest.NewRequest("GET", "/api/replication/status", nil))
+	newReplicaMonitor().status(db, 8081, upstream)(w, httptest.NewRequest("GET", "/api/replication/status", nil))
 	var status struct{ PrimaryURL string }
 	if err := json.Unmarshal(w.Body.Bytes(), &status); err != nil {
 		t.Fatal(err)

@@ -31,6 +31,66 @@ func OpenReplica(dir, role string) (*DB, error) {
 	}
 	return open(dir, role)
 }
+
+// OpenExplorer restores the mode selected in Explorer for a writable node.
+func OpenExplorer(dir, role string) (*DB, error) {
+	if role == "secondary" {
+		return OpenReplica(dir, role)
+	}
+	if role != "" && role != "primary" {
+		return nil, errors.New("invalid replica role")
+	}
+	return open(dir, "explorer-"+role)
+}
+
+const modeFile = "explorer-mode.json"
+
+func (db *DB) Role() string {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	return db.role
+}
+
+func (db *DB) SetReplication(ctx context.Context, enabled bool) error {
+	db.mu.Lock()
+	defer db.mu.Unlock()
+	if err := db.check(ctx); err != nil {
+		return err
+	}
+	if db.role == "secondary" {
+		return ErrReplicaReadOnly
+	}
+	if enabled == (db.role == "primary") {
+		return nil
+	}
+	mode := "disabling"
+	if enabled {
+		mode = "primary"
+	}
+	if err := atomicJSON(filepath.Join(db.dir, modeFile), mode); err != nil {
+		return db.fail(err)
+	}
+	if enabled {
+		return db.fail(db.initReplication("primary"))
+	}
+	return db.fail(db.disableReplication())
+}
+
+func (db *DB) disableReplication() error {
+	if err := os.RemoveAll(filepath.Join(db.dir, "replication")); err != nil {
+		return err
+	}
+	if err := os.Remove(filepath.Join(db.dir, "replica.json")); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	db.role = ""
+	db.replica = Position{}
+	if err := syncDir(db.dir); err != nil {
+		return err
+	}
+	return atomicJSON(filepath.Join(db.dir, modeFile), "standalone")
+}
+
 func (db *DB) logPath(n uint64) string {
 	return filepath.Join(db.dir, "replication", fmt.Sprintf("%020d.json", n))
 }

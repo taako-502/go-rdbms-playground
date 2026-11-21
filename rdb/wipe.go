@@ -68,7 +68,7 @@ func finishWipe(dir string) error {
 			if err := os.RemoveAll(path); err != nil {
 				return err
 			}
-		case name == "catalog.json", name == "migrations.json", name == "replica.json", name == "reset.json",
+		case name == modeFile, name == "catalog.json", name == "migrations.json", name == "replica.json", name == "reset.json",
 			strings.HasSuffix(name, ".jsonl"), strings.HasSuffix(name, ".index.json"), strings.HasPrefix(name, ".pending-"):
 			if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return err

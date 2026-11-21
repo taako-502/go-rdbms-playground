@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"time"
@@ -18,11 +20,13 @@ const peerWipePath = "/internal/replication/wipe"
 const sourceHeader = "X-Replica-Source"
 
 func (m *replicaMonitor) loadPeers(dir string) error {
-	m.peerDir = filepath.Join(dir, "replication", "peers")
-	if err := os.MkdirAll(m.peerDir, 0700); err != nil {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	peerDir := filepath.Join(dir, "replication", "peers")
+	if err := os.MkdirAll(peerDir, 0700); err != nil {
 		return err
 	}
-	entries, err := os.ReadDir(m.peerDir)
+	entries, err := os.ReadDir(peerDir)
 	if err != nil {
 		return err
 	}
@@ -33,6 +37,7 @@ func (m *replicaMonitor) loadPeers(dir string) error {
 		}
 		m.peers[port] = observation{}
 	}
+	m.peerDir = peerDir
 	return nil
 }
 
@@ -88,6 +93,7 @@ func peerWipe(db *rdb.DB, stop func()) http.HandlerFunc {
 			return
 		}
 		if r.Method == http.MethodGet {
+			w.Header().Set("X-Replica-Directory", url.QueryEscape(db.Directory()))
 			w.Header().Set(sourceHeader, db.Position().Source)
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -102,49 +108,125 @@ func peerWipe(db *rdb.DB, stop func()) http.HandlerFunc {
 	}
 }
 
-func callPeer(ctx context.Context, client *http.Client, method string, port int, source string) error {
+func callPeer(ctx context.Context, client *http.Client, method string, port int, source string) (string, error) {
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d%s", port, peerWipePath)
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	req.Header.Set(sourceHeader, source)
 	res, err := client.Do(req)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer res.Body.Close()
 	if res.StatusCode != http.StatusNoContent || res.Header.Get(sourceHeader) != source {
-		return fmt.Errorf("Secondary %d の応答を確認できません (%s)", port, res.Status)
+		return "", fmt.Errorf("Secondary %d の応答を確認できません (%s)", port, res.Status)
 	}
-	return nil
+	return url.QueryUnescape(res.Header.Get("X-Replica-Directory"))
 }
 
 func (m *replicaMonitor) wipeCluster(db *rdb.DB, stop func(), client *http.Client) http.HandlerFunc {
+	return m.clusterAction(db, stop, client)
+}
+
+type peerTarget struct {
+	Port      int
+	Directory string
+}
+type removalPlan struct {
+	Source  string
+	Targets []peerTarget
+}
+
+func (m *replicaMonitor) ports() []int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	ports := make([]int, 0, len(m.peers))
+	for port := range m.peers {
+		ports = append(ports, port)
+	}
+	sort.Ints(ports)
+	return ports
+}
+
+func (m *replicaMonitor) plan(ctx context.Context, db *rdb.DB, client *http.Client) (removalPlan, error) {
+	plan := removalPlan{Source: db.Position().Source, Targets: []peerTarget{}}
+	for _, port := range m.ports() {
+		dir, err := callPeer(ctx, client, http.MethodGet, port, plan.Source)
+		if err != nil || dir == "" {
+			return plan, fmt.Errorf("Secondary %d の保存先を確認できません。対象を起動して再実行してください。削除は開始していません。", port)
+		}
+		plan.Targets = append(plan.Targets, peerTarget{port, dir})
+	}
+	return plan, nil
+}
+
+func (m *replicaMonitor) disablePreview(db *rdb.DB, client *http.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		m.operations.Lock()
+		defer m.operations.Unlock()
+		if db.Role() != "primary" {
+			clusterResponse(w, 409, "Primaryで実行してください。")
+			return
+		}
+		plan, err := m.plan(r.Context(), db, client)
+		if err != nil {
+			clusterResponse(w, 409, err.Error())
+			return
+		}
+		w.Header().Set("Cache-Control", "no-store")
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(plan)
+	}
+}
+
+func (m *replicaMonitor) enableReplication(db *rdb.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		m.operations.Lock()
+		defer m.operations.Unlock()
+		if err := db.SetReplication(r.Context(), true); err != nil {
+			clusterResponse(w, 500, err.Error())
+			return
+		}
+		if m.peerDir == "" {
+			if err := m.loadPeers(db.Directory()); err != nil {
+				clusterResponse(w, 500, err.Error())
+				return
+			}
+		}
+		clusterResponse(w, 200, "")
+	}
+}
+
+func (m *replicaMonitor) clusterAction(db *rdb.DB, stop func(), client *http.Client) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !m.operations.TryLock() {
 			clusterResponse(w, http.StatusConflict, "複製処理中です。もう一度実行してください。")
 			return
 		}
 		defer m.operations.Unlock()
-		m.mu.Lock()
-		ports := make([]int, 0, len(m.peers))
-		for port := range m.peers {
-			ports = append(ports, port)
+		if db.Role() != "primary" {
+			clusterResponse(w, 409, "Primaryで実行してください。")
+			return
 		}
-		m.mu.Unlock()
-		sort.Ints(ports)
-		source := db.Position().Source
-		for _, port := range ports {
-			if err := callPeer(r.Context(), client, http.MethodGet, port, source); err != nil {
-				clusterResponse(w, http.StatusConflict, fmt.Sprintf("Secondary %d を確認できません。対象を起動してから再実行してください。削除は開始していません。", port))
+		plan, err := m.plan(r.Context(), db, client)
+		if err != nil {
+			clusterResponse(w, 409, err.Error())
+			return
+		}
+		if stop == nil {
+			var confirmed removalPlan
+			if err := json.NewDecoder(r.Body).Decode(&confirmed); err != nil || confirmed.Source != plan.Source || !slices.Equal(confirmed.Targets, plan.Targets) {
+				clusterResponse(w, 409, "対象が変わりました。もう一度確認してください。")
 				return
 			}
 		}
 		ctx := context.WithoutCancel(r.Context())
-		wiped := make([]int, 0, len(ports))
-		for _, port := range ports {
-			if err := callPeer(ctx, client, http.MethodPost, port, source); err != nil {
+		wiped := make([]int, 0, len(plan.Targets))
+		for _, target := range plan.Targets {
+			port := target.Port
+			if _, err := callPeer(ctx, client, http.MethodPost, port, plan.Source); err != nil {
 				clusterResponse(w, http.StatusConflict, fmt.Sprintf("消去確認済み %v。Secondary %d の消去を確認できません。Primaryは保持されています。", wiped, port))
 				return
 			}
@@ -153,6 +235,15 @@ func (m *replicaMonitor) wipeCluster(db *rdb.DB, stop func(), client *http.Clien
 				clusterResponse(w, http.StatusInternalServerError, fmt.Sprintf("消去確認済み %v。対象一覧の更新に失敗しました。", wiped))
 				return
 			}
+		}
+		if stop == nil {
+			if err := db.SetReplication(ctx, false); err != nil {
+				clusterResponse(w, 500, err.Error())
+				return
+			}
+			m.peerDir = ""
+			clusterResponse(w, 200, "")
+			return
 		}
 		if err := db.Wipe(ctx); err != nil {
 			clusterResponse(w, http.StatusInternalServerError, fmt.Sprintf("消去確認済み %v。Primaryの初期化に失敗しました。", wiped))
