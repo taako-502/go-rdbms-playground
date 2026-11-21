@@ -4,7 +4,8 @@ Goで作る、学習用の組み込み型リレーショナルデータベース
 SQLを使わず、型付きのGo APIで挿入・検索する。
 
 ## 記事の一覧
-- [Goでリレーショナルデータベース自作してみた](https://ap-ep.com/go-rdbms-playground/)
+- Vol.1 [Goでリレーショナルデータベース自作してみた](https://ap-ep.com/go-rdbms-playground/)
+- Vol.2 [Goで自作したRDBに非同期レプリケーションを追加した](https://ap-ep.com/go-rdbms-playground-async-replication/)
 
 ## 仕様
 
