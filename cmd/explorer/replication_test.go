@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/taako-502/go-rdbms-playground/rdb"
@@ -38,14 +39,16 @@ func TestReplicaCatchUp(t *testing.T) {
 		t.Cleanup(func() { db.Close() })
 		return db
 	}
-	open(dir, "primary").Close()
-	a, b := t.TempDir(), t.TempDir()
+	primary := open(dir, "primary")
+	a, b := filepath.Join(dir, "secondary-a"), filepath.Join(dir, "secondary-b")
 	for _, dst := range []string{a, b} {
-		if err = os.CopyFS(dst, os.DirFS(dir)); err != nil {
+		if err := primary.SnapshotSecondary(ctx, dst); err != nil {
 			t.Fatal(err)
 		}
+		if err := primary.SnapshotSecondary(ctx, dst); !os.IsExist(err) {
+			t.Fatalf("existing snapshot: %v", err)
+		}
 	}
-	primary := open(dir, "primary")
 	first := open(a, "secondary")
 	second := open(b, "secondary")
 	monitor := newReplicaMonitor()

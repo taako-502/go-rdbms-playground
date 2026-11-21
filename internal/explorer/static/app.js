@@ -285,6 +285,14 @@ async function updateReplicaStatus() {
   try {
     const status = await request('/api/replication/status');
     const toggle = $('replica-mode');
+    $('add-secondary').hidden = status.Role !== 'primary';
+    const input = $('secondary-port');
+    if (status.Role === 'primary' && !input.value && document.activeElement !== input) {
+      const used = new Set(status.Nodes.map(node => node.Port));
+      let port = status.Nodes[0].Port % 65535 + 1;
+      while (used.has(port) && used.size < 65535) port = port % 65535 + 1;
+      input.value = port;
+    }
     toggle.hidden = status.Role === 'secondary';
     toggle.dataset.enabled = String(status.Role === 'primary');
     toggle.textContent = status.Role === 'primary' ? 'レプリカセットをOFFにする' : 'レプリカセットをONにする';
@@ -421,6 +429,27 @@ $('replica-mode').addEventListener('click', async () => {
     $('settings').close();
     notice(error.message, true);
   } finally {
+    await updateReplicaStatus();
+    busy(false);
+  }
+});
+
+$('add-secondary').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (state.busy) return;
+  const input = $('secondary-port');
+  const port = Number(input.value);
+  busy(true);
+  try {
+    await request('/api/settings/replication/secondaries', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({Port: port}),
+    });
+    input.value = '';
+    notice('Secondaryを起動しました。ノード一覧からポート ' + port + ' を開けます。');
+  } catch (error) {
+    notice(error.message, true);
+  } finally {
+    $('settings').close();
     await updateReplicaStatus();
     busy(false);
   }

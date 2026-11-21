@@ -59,6 +59,10 @@
 <dialog id="settings" aria-labelledby="settings-heading">
  <h2 id="settings-heading">データベース設定</h2>
  <button id="replica-mode" class="secondary" type="button" hidden></button>
+ <form id="add-secondary" hidden>
+  <label>Secondaryのポート <input id="secondary-port" type="number" min="1" max="65535" required></label>
+  <button class="secondary" type="submit">Secondaryを追加・起動</button>
+ </form>
  <p id="reset-readonly" hidden>リセットはPrimaryから実行できます。</p>
  <div id="reset-actions">
   <p>全テーブルの行を削除します。テーブル定義とインデックスは残ります。</p>

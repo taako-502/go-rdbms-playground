@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 
 	"github.com/taako-502/go-rdbms-playground/internal/explorer"
@@ -52,6 +53,13 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	return serveNode(ctx, stop, db, listener, *upstream)
+}
+
+func serveNode(ctx context.Context, stop func(), db *rdb.DB, listener net.Listener, upstream string) error {
+	defer listener.Close()
+	role := db.Role()
+	port := listener.Addr().(*net.TCPAddr).Port
 	mux := http.NewServeMux()
 	monitor := newReplicaMonitor()
 	ui := explorer.NewWithWipe(db, stop)
@@ -64,34 +72,41 @@ func run() error {
 		ui.ServeHTTP(w, r)
 	})
 	mux.Handle("/", ui)
-	mux.HandleFunc("GET /api/replication/status", monitor.status(db, *port, primaryLink(*upstream)))
-	if *role != "secondary" {
+	mux.HandleFunc("GET /api/replication/status", monitor.status(db, port, primaryLink(upstream)))
+	if role != "secondary" {
+		children, cancelChildren := context.WithCancel(ctx)
+		var workers sync.WaitGroup
+		defer func() { cancelChildren(); workers.Wait() }()
+		manager := secondaryManager{children, &workers, db, monitor, port}
 		if db.Role() == "primary" {
 			if err := monitor.loadPeers(db.Directory()); err != nil {
-				listener.Close()
+				return err
+			}
+			if err := manager.restore(); err != nil {
 				return err
 			}
 		}
 		protection := http.NewCrossOriginProtection()
+		mux.Handle("POST /api/settings/replication/secondaries", protection.Handler(http.HandlerFunc(manager.add)))
 		mux.Handle("POST /api/settings/replication/on", protection.Handler(monitor.enableReplication(db)))
 		mux.Handle("GET /api/settings/replication/off", protection.Handler(monitor.disablePreview(db, localPeerClient())))
 		mux.Handle("POST /api/settings/replication/off", protection.Handler(monitor.clusterAction(db, nil, localPeerClient())))
 		mux.Handle("POST /api/settings/wipe-cluster", protection.Handler(monitor.wipeCluster(db, stop, localPeerClient())))
 		mux.HandleFunc("GET /replication/log", logHandler(db, monitor))
 	}
-	if *role == "secondary" {
+	if role == "secondary" {
 		protection := http.NewCrossOriginProtection()
 		mux.Handle("GET "+peerWipePath, protection.Handler(peerWipe(db, stop)))
 		mux.Handle("POST "+peerWipePath, protection.Handler(peerWipe(db, stop)))
 		workerCtx, cancel := context.WithCancel(ctx)
 		finished := make(chan struct{})
-		go func() { defer close(finished); follow(workerCtx, db, *upstream, *port) }()
+		go func() { defer close(finished); follow(workerCtx, db, upstream, port) }()
 		defer func() { cancel(); <-finished }()
 	}
 	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
-	log.Printf("Database explorer: http://%s (data: %s)", listener.Addr(), *data)
+	log.Printf("Database explorer: http://%s (data: %s)", listener.Addr(), db.Directory())
 	select {
 	case err := <-done:
 		if errors.Is(err, http.ErrServerClosed) {
