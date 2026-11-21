@@ -71,6 +71,9 @@ func (db *DB) loadHistory() error {
 func (db *DB) Migrate(ctx context.Context, migrations ...Migration) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
+	if db.role != "" {
+		return ErrReplicaReadOnly
+	}
 	if err := db.check(ctx); err != nil {
 		return err
 	}

@@ -153,3 +153,55 @@
   box-shadow:0 4px 20px #183b3026;
   pointer-events:none;
 }
+
+#replication { margin-bottom: 20px; }
+#replica-nodes a { color: var(--accent, #315fb2); }
+.content-grid:has(.insert-panel[hidden]) { grid-template-columns: 1fr; }
+#open-settings { margin-bottom: 12px; }
+#settings {
+  width: min(600px, calc(100vw - 28px));
+  max-height: 88dvh;
+  padding: 0;
+  color: #203b31;
+  background: #f3f6f4;
+  border: 1px solid #c4d3ca;
+  border-radius: 16px;
+  box-shadow: 0 24px 80px #10271d40;
+}
+#settings::backdrop { background: #10271d80; backdrop-filter: blur(3px); }
+.settings-head, .settings-line, .settings-controls {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+}
+.settings-head {
+  position: sticky; top: 0; z-index: 1;
+  padding: 17px 22px; color: white; background: #173f32;
+}
+.settings-head h2 { font-size: 19px; letter-spacing: .03em; }
+.settings-close {
+  width: 34px; height: 34px; color: white; font-size: 22px;
+  background: transparent; border: 1px solid #719084; border-radius: 8px;
+}
+.settings-close:hover { background: #325848; }
+.settings-body { padding: 16px; display: grid; gap: 12px; }
+.settings-card { padding: 16px 18px; background: white; border: 1px solid #d7e2db; border-radius: 11px; }
+.settings-card h3 { margin: 0; font-size: 15px; }
+.settings-card p, .settings-card label { margin: 0; color: #52655c; font-size: 13px; }
+.settings-line + .settings-line, #reset-actions .settings-line {
+  margin-top: 12px; padding-top: 12px; border-top: 1px solid #e5ece7;
+}
+.settings-controls { justify-content: flex-start; flex-wrap: wrap; gap: 7px; }
+.settings-controls input, .settings-controls select {
+  padding: 7px 9px; border: 1px solid #bdcfc3; border-radius: 6px; background: white;
+  color: #233e30; font: 13px ui-monospace, monospace; min-height: 36px;
+}
+#secondary-port { width: 90px; }
+#replica-mode, #add-secondary button { background: #176248; color: white; border-color: #176248; }
+#replica-mode:hover, #add-secondary button:hover { background: #104d38; }
+#settings .destructive { color: #923c30; border-color: #e3c9c3; }
+#settings .destructive:hover { background: #faeee9; }
+.wipe-settings { border-left: 3px solid #bb7262; }
+.settings-card #wipe-directory, .settings-card #reset-readonly { margin: 10px 0; overflow-wrap: anywhere; }
+@media (max-width: 480px) {
+  .settings-body { padding: 10px; }
+  .settings-line { align-items: flex-start; flex-direction: column; gap: 8px; }
+}

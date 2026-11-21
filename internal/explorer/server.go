@@ -21,12 +21,30 @@ var assets embed.FS
 type server struct{ db *rdb.DB }
 
 func New(db *rdb.DB) http.Handler {
+	return NewWithWipe(db, nil)
+}
+
+func NewWithWipe(db *rdb.DB, shutdown func()) http.Handler {
 	s := &server{db: db}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/tables", s.tables)
 	mux.HandleFunc("GET /api/tables/{table}/indexes/{column}", s.index)
 	mux.HandleFunc("GET /api/tables/{table}/rows", s.rows)
 	mux.HandleFunc("POST /api/tables/{table}/rows", s.insert)
+	mux.HandleFunc("POST /api/settings/reset/{mode}", s.reset)
+	if shutdown != nil {
+		mux.HandleFunc("GET /api/settings/wipe", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, http.StatusOK, map[string]string{"directory": db.Directory(), "role": db.Role()})
+		})
+		mux.HandleFunc("POST /api/settings/wipe", func(w http.ResponseWriter, r *http.Request) {
+			if err := db.Wipe(r.Context()); err != nil {
+				fail(w, err)
+				return
+			}
+			writeJSON(w, http.StatusOK, struct{}{})
+			shutdown()
+		})
+	}
 	static, err := fs.Sub(assets, "static")
 	if err != nil {
 		panic(err)
@@ -201,4 +219,21 @@ func (s *server) insert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 201, map[string]any{"row": browserRow(row)})
+}
+
+func (s *server) reset(w http.ResponseWriter, r *http.Request) {
+	mode := rdb.ResetMode(r.PathValue("mode"))
+	if mode != rdb.ResetRows && mode != rdb.ResetAll {
+		writeError(w, http.StatusBadRequest, "リセットの種類が不明です。")
+		return
+	}
+	if err := s.db.Reset(r.Context(), mode); err != nil {
+		if errors.Is(err, rdb.ErrReplicaReadOnly) {
+			writeError(w, http.StatusForbidden, "Primaryの設定画面から実行してください。")
+		} else {
+			fail(w, err)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, struct{}{})
 }

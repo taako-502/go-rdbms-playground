@@ -9,11 +9,17 @@
  <a class="brand" href="/" aria-label="RDB Explorer ホーム"><span class="brand-icon">▤</span><span>RDB<span class="brand-light"> Explorer</span></span></a>
  <div class="connection"><span class="dot"></span> LOCAL DATABASE <span class="connection-label">Go / Embedded</span></div>
  <div class="section-label">TABLES <span id="table-count">0</span></div>
+ <button id="open-settings" class="secondary" type="button">設定</button>
  <nav id="tables" aria-label="テーブル一覧"></nav>
 </aside>
 <main>
  <header class="topbar"><span>Workspace <span class="divider">/</span> Database explorer</span><span class="local-tag">LOCAL</span></header>
  <section class="workspace">
+  <section id="replication" class="panel" hidden aria-labelledby="replica-heading">
+   <div class="panel-heading"><h2 id="replica-heading">レプリカセット</h2><span id="replica-state" class="muted"></span></div>
+   <div class="table-scroll"><table><thead><tr><th>ノード</th><th>適用済みLSN</th><th>未反映件数</th><th>最終通信</th></tr></thead><tbody id="replica-nodes"></tbody></table></div>
+   <a id="primary-link" class="panel-heading" hidden></a>
+  </section>
   <div class="page-heading"><h1 id="table-name">データベース</h1><button id="refresh" class="secondary" type="button">↻ 再読み込み</button></div>
   <div id="notice" role="status" aria-live="polite" hidden></div>
   <div id="empty-db" class="empty" hidden>テーブルがありません。Go APIでテーブルを作成してから再読み込みしてください。</div>
@@ -25,7 +31,7 @@
     <button class="secondary" type="button" data-view="indexes" aria-controls="view-indexes" aria-pressed="false">インデックス</button>
    </nav>
    <div id="view-records" class="content-grid">
-    <section class="panel records"><div class="panel-heading"><h2>保存済みデータ</h2><span class="muted">READ VIEW</span></div><div class="table-scroll"><table aria-label="保存済みデータ"><thead id="columns"></thead><tbody id="rows"></tbody></table></div><p id="row-empty" class="empty" hidden>まだデータがありません。右のフォームから最初の行を追加できます。</p><div class="table-footer"><span id="shown-count">0 rows</span><span>並び順は保証されません</span></div></section>
+    <section class="panel records"><div class="panel-heading"><h2>保存済みデータ</h2><span class="muted">READ VIEW</span></div><div class="table-scroll"><table aria-label="保存済みデータ"><thead id="columns"></thead><tbody id="rows"></tbody></table></div><p id="row-empty" class="empty" hidden>まだデータがありません。</p><div class="table-footer"><span id="shown-count">0 rows</span><span>並び順は保証されません</span></div></section>
     <section class="panel insert-panel"><div class="panel-heading"><h2>行を追加</h2></div><p class="form-description">値を入力してデータベースに保存します。</p><form id="insert-form"><div id="fields"></div><div class="insert-actions"><button class="secondary" id="random-fill" type="button" disabled>ランダム入力</button><button class="primary" id="insert" type="submit">＋ 行を保存</button></div><p class="form-note">保存した行は一覧に反映されます。</p></form></section>
    </div>
    <section id="view-schema" class="panel" hidden>
@@ -50,5 +56,38 @@
   </div>
  </section>
 </main>
+<dialog id="settings" aria-labelledby="settings-heading">
+ <div class="settings-head">
+  <h2 id="settings-heading">データベース設定</h2>
+  <form method="dialog"><button class="settings-close" aria-label="設定を閉じる">×</button></form>
+ </div>
+ <div class="settings-body">
+  <section class="settings-card" id="replica-config" hidden>
+   <div class="settings-line"><h3>レプリカセット</h3><button id="replica-mode" class="secondary" type="button" hidden></button></div>
+   <form id="add-secondary" class="settings-line" hidden>
+    <label for="secondary-port">Secondaryの追加</label>
+    <div class="settings-controls"><input id="secondary-port" aria-label="Secondaryのポート" type="number" min="1" max="65535" required><button class="secondary" type="submit">追加・起動</button></div>
+   </form>
+   <form id="remove-secondary" class="settings-line" hidden>
+    <label for="remove-port">複製先の削除</label>
+    <div class="settings-controls"><select id="remove-port"></select><button class="secondary destructive" type="submit">削除</button></div>
+   </form>
+  </section>
+  <section class="settings-card">
+   <h3>データの初期化</h3>
+   <p id="reset-readonly" hidden>データの初期化はPrimaryから実行できます。</p>
+   <div id="reset-actions">
+    <div class="settings-line"><p>テーブル定義を保持して行を消去</p><button class="secondary destructive" type="button" data-reset="rows">全データを削除</button></div>
+    <div class="settings-line"><p>定義・インデックス・移行履歴も消去</p><button class="secondary destructive" type="button" data-reset="all">DBを初期化</button></div>
+   </div>
+  </section>
+  <section class="settings-card wipe-settings">
+   <h3>完全初期化</h3>
+   <p id="wipe-directory"></p>
+   <div class="settings-controls"><button id="wipe-node" class="secondary destructive" type="button" hidden>このノードを完全初期化</button>
+   <button id="wipe-cluster" class="secondary destructive" type="button" hidden>レプリカセットを完全初期化</button></div>
+  </section>
+ </div>
+</dialog>
 </body>
 </html>

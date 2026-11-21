@@ -280,3 +280,222 @@ $('insert-form').addEventListener('submit', async event => {
   } finally { busy(false); }
 });
 refresh();
+
+async function updateReplicaStatus() {
+  try {
+    const status = await request('/api/replication/status');
+    const toggle = $('replica-mode');
+    $('replica-config').hidden = status.Role === 'secondary';
+    const ports = status.Nodes.filter(node => node.Role === 'secondary').map(node => String(node.Port));
+    const select = $('remove-port');
+    $('remove-secondary').hidden = status.Role !== 'primary' || ports.length === 0;
+    if (Array.from(select.options, option => option.value).join(',') !== ports.join(',')) {
+      const previous = select.value;
+      select.replaceChildren(...ports.map(port => new Option('Secondary · ' + port, port)));
+      if (ports.includes(previous)) select.value = previous;
+    }
+    $('add-secondary').hidden = status.Role !== 'primary';
+    const input = $('secondary-port');
+    if (status.Role === 'primary' && !input.value && document.activeElement !== input) {
+      const used = new Set(status.Nodes.map(node => node.Port));
+      let port = status.Nodes[0].Port % 65535 + 1;
+      while (used.has(port) && used.size < 65535) port = port % 65535 + 1;
+      input.value = port;
+    }
+    toggle.hidden = status.Role === 'secondary';
+    toggle.dataset.enabled = String(status.Role === 'primary');
+    toggle.textContent = status.Role === 'primary' ? 'レプリカセットをOFFにする' : 'レプリカセットをONにする';
+    if (!status.Role) {
+      $('replication').hidden = true;
+      $('wipe-cluster').hidden = true;
+      return;
+    }
+    $('replication').hidden = false;
+    const secondary = status.Role === 'secondary';
+    $('wipe-cluster').hidden = status.Role !== 'primary';
+    const primaryLink = $('primary-link');
+    primaryLink.hidden = !(secondary && status.PrimaryURL);
+    if (!primaryLink.hidden) {
+      primaryLink.href = status.PrimaryURL;
+      primaryLink.textContent = 'Primaryに戻る (' + status.PrimaryURL + ')';
+    }
+    document.querySelector('.insert-panel').hidden = secondary;
+    $('reset-actions').hidden = secondary;
+    $('reset-readonly').hidden = !secondary;
+    $('replica-state').textContent = secondary ? 'このノードは読み取り専用' : '直近の報告値・2秒ごとに更新';
+    const rows = status.Nodes.map(node => {
+      const row = document.createElement('tr');
+      const url = new URL(location.origin);
+      url.port = node.Port;
+      const link = document.createElement('a');
+      link.href = url.href;
+      link.textContent = node.Role + ' · ' + node.Port;
+      row.insertCell().append(link);
+      row.insertCell().textContent = node.LSN;
+      row.insertCell().textContent = node.Lag || '—';
+      const seen = node.LastSeen && new Date(node.LastSeen);
+      row.insertCell().textContent = seen
+        ? (seen.getUTCFullYear() === 1 ? '未確認' : seen.toLocaleTimeString()) + (Date.now() - seen.getTime() > 5000 ? '（応答待ち）' : '')
+        : 'このノード';
+      return row;
+    });
+    $('replica-nodes').replaceChildren(...rows);
+  } catch {
+    $('replica-state').textContent = '更新失敗';
+  }
+
+}
+async function pollReplicaStatus() {
+  await updateReplicaStatus();
+  setTimeout(pollReplicaStatus, 2000);
+}
+pollReplicaStatus();
+
+$('open-settings').addEventListener('click', () => $('settings').showModal());
+document.querySelectorAll('[data-reset]').forEach(button => {
+  button.addEventListener('click', async () => {
+    if (state.busy) return;
+    const mode = button.dataset.reset;
+    const scope = mode === 'all'
+      ? '全テーブルの行・定義・インデックス・マイグレーション履歴'
+      : '全テーブルの行';
+    if (!window.confirm(scope + 'を削除します。この操作は元に戻せません。実行しますか？')) return;
+    $('settings').close();
+    busy(true);
+    try {
+      await request('/api/settings/reset/' + mode, { method: 'POST' });
+      busy(false);
+      await refresh();
+    } catch (error) {
+      notice(error.message, true);
+    } finally {
+      busy(false);
+    }
+  });
+});
+
+let wipeDirectory = '';
+let wipeReturnsToPrimary = false;
+async function loadWipeDirectory() {
+  try {
+    const result = await request('/api/settings/wipe');
+    wipeDirectory = result.directory;
+    wipeReturnsToPrimary = result.role === 'secondary';
+    $('wipe-directory').textContent = '保存先 ' + wipeDirectory;
+    $('wipe-node').hidden = false;
+  } catch {
+    // The host may run Explorer without the shutdown action.
+  }
+}
+loadWipeDirectory();
+$('wipe-node').addEventListener('click', async () => {
+  if (state.busy || !wipeDirectory) return;
+  busy(true);
+  try {
+    const message = wipeReturnsToPrimary
+      ? wipeDirectory + ' のデータと複製ログを削除し、このSecondaryを停止します。削除後はPrimaryの画面に戻ります。実行しますか？'
+      : wipeDirectory + ' のデータと複製ログを削除し、このExplorerを停止します。ほかのノードには旧データが残ります。実行しますか？';
+    if (!window.confirm(message)) {
+      busy(false);
+      return;
+    }
+    $('settings').close();
+    const result = await request('/api/settings/wipe', { method: 'POST' });
+    if (result.primaryURL) {
+      window.location.replace(result.primaryURL);
+      return;
+    }
+    $('table-content').hidden = true;
+    $('replication').hidden = true;
+    $('tables').replaceChildren();
+    notice('完全初期化しました。同じ保存先でマイグレーションを実行できます。');
+  } catch (error) {
+    notice(error.message, true);
+    busy(false);
+  }
+});
+
+$('wipe-cluster').addEventListener('click', async () => {
+  if (state.busy) return;
+  if (!window.confirm('登録済みのSecondaryとPrimaryのDBファイル・複製ログを削除し、各Explorerを停止します。この操作は元に戻せません。実行しますか？')) return;
+  $('settings').close();
+  busy(true);
+  try {
+    await request('/api/settings/wipe-cluster', { method: 'POST' });
+    $('table-content').hidden = true;
+    $('replication').hidden = true;
+    $('tables').replaceChildren();
+    notice('レプリカセットを完全初期化しました。');
+  } catch (error) {
+    notice(error.message, true);
+    busy(false);
+  }
+});
+
+$('replica-mode').addEventListener('click', async () => {
+  if (state.busy) return;
+  const enabled = $('replica-mode').dataset.enabled === 'true';
+  busy(true);
+  try {
+    const path = '/api/settings/replication/' + (enabled ? 'off' : 'on');
+    if (enabled) {
+      const plan = await request(path);
+      const targets = plan.Targets.map(node => node.Directory + ' (port ' + node.Port + ')');
+      const description = targets.length ? '次のSecondaryを停止し、DBを削除します。\n' + targets.join('\n') : '登録済みのSecondaryはありません。';
+      if (!window.confirm(description + '\nPrimaryのテーブルとデータを保持して、レプリカセットをOFFにしますか？')) return;
+      await request(path, {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(plan)});
+    } else {
+      await request(path, {method: 'POST'});
+    }
+    $('settings').close();
+    notice(enabled ? '単体DBに切り替えました。' : 'このDBをPrimaryに切り替えました。');
+  } catch (error) {
+    $('settings').close();
+    notice(error.message, true);
+  } finally {
+    await updateReplicaStatus();
+    busy(false);
+  }
+});
+
+$('add-secondary').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (state.busy) return;
+  const input = $('secondary-port');
+  const port = Number(input.value);
+  busy(true);
+  try {
+    await request('/api/settings/replication/secondaries', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({Port: port}),
+    });
+    input.value = '';
+    notice('Secondaryを起動しました。ノード一覧からポート ' + port + ' を開けます。');
+  } catch (error) {
+    notice(error.message, true);
+  } finally {
+    $('settings').close();
+    await updateReplicaStatus();
+    busy(false);
+  }
+});
+
+$('remove-secondary').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (state.busy) return;
+  const port = $('remove-port').value;
+  const path = '/api/settings/replication/secondaries/' + encodeURIComponent(port);
+  busy(true);
+  try {
+    const plan = await request(path);
+    if (!window.confirm('Secondary · ' + port + ' を停止し、次の保存先のDBを削除します。\n' + plan.Targets[0].Directory + '\n削除しますか？')) return;
+    await request(path, {method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(plan)});
+    $('settings').close();
+    notice('Secondary · ' + port + ' を削除しました。');
+  } catch (error) {
+    $('settings').close();
+    notice(error.message, true);
+  } finally {
+    await updateReplicaStatus();
+    busy(false);
+  }
+});

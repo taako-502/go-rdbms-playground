@@ -3,6 +3,9 @@
 Goで作る、学習用の組み込み型リレーショナルデータベース。
 SQLを使わず、型付きのGo APIで挿入・検索する。
 
+## 記事の一覧
+- [Goでリレーショナルデータベース自作してみた](https://ap-ep.com/go-rdbms-playground/)
+
 ## 仕様
 
 - Go 1.27以上。外部ライブラリは不要。
@@ -14,6 +17,7 @@ SQLを使わず、型付きのGo APIで挿入・検索する。
 - 行データはJSON Lines、定義・インデックス・マイグレーション履歴はJSONで保存。整数の精度を維持する。
 - 1プロセスで使用し、同時操作はロックで直列化する。同じDBディレクトリの重複Openは不可。
 - 更新・削除、`And`・`Or`・`Join`・`GroupBy`、複数操作のトランザクションは非対応。
+
 
 ## 実行方法
 
@@ -112,3 +116,55 @@ go vet ./...
 go test ./rdb -run TestProcessCrashRecovery -v
 go test ./rdb -run '^$' -bench 'Benchmark(Lookup|Insert)' -benchmem -benchtime=20x
 ```
+
+Explorerの「設定」から、全テーブルの行を削除するか、テーブル定義・インデックス・マイグレーション履歴も初期化できる。単体起動で空の状態を維持するには `-demo=false` を使う。複製構成ではPrimaryで実行し、Secondaryにも順次適用される。過去の複製ログは保持される。初期化後に複製構成でスキーマを作り直す場合は、新しい保存先を使う。
+
+設定でレプリカセットをONにすると、現在のDBをそのままPrimaryにできる。同じ設定画面でポートを指定して「Secondaryを追加・起動」を押すと、その時点のDBをコピーし、専用URLで読み取りと非同期複製を開始する。画面から追加したノードはPrimaryのExplorerと一緒に起動・停止する。保存先はPrimaryの保存先直下の `secondary-<port>/`（保存先名が `primary` の場合はその兄弟ディレクトリ）。使用中のポートや既存ディレクトリは上書きしない。設定の「複製先の削除」から稼働中のSecondaryを個別に選び、保存先を確認して停止・消去できる。OFFでは登録済みSecondaryの保存先を確認し、承認すると各Secondaryを停止・消去してPrimaryを単体DBに戻す。キャンセルすると処理を中止する。Primaryの行・定義・インデックス・マイグレーション履歴は保持され、Explorerの再起動後も選択したモードで開く。
+
+「このノードを完全初期化」は、表示中のノードの複製情報とログを含むDBファイルを削除してExplorerを停止する。同じ保存先に `cmd/migrate` を実行できる。別ノードのデータは残る。Secondaryから実行すると、PrimaryがそのSecondaryを消去して登録を解除し、完了後にブラウザがPrimaryの画面へ戻る。Primaryを作り直したら、Secondaryは新しいスナップショットから準備する。
+
+Primaryの「レプリカセットを完全初期化」は、同じマシン上の登録済みSecondaryを事前確認し、すべての消去を確認してからPrimaryを消去する。各Explorerは消去後に停止する。Secondaryは複製時に登録され、登録はPrimaryの再起動後も残る。更新前から停止中のSecondaryがある場合は先に起動し、Primaryの一覧への表示を確認する。
+
+## 非同期レプリケーション
+
+Primaryだけが書き込みを受け付ける。SecondaryはHTTPでログを取得し、ローカルのB-treeから検索できる。Secondaryの台数上限は設けない。複製中はスキーマ固定で、自動昇格は行わない。Primaryで成功した直後の行はSecondaryにまだ届いていない場合がある。
+
+別プロセスで手動起動する場合は次の順に準備する。Primary・Secondaryの保存先には、まだ存在しないディレクトリを使う。
+
+まずマイグレーションを適用し、Primaryを一度起動する。
+
+```sh
+go run ./cmd/migrate -data ./data/primary
+go run ./cmd/explorer -role primary -data ./data/primary
+```
+
+起動したらCtrl+CでPrimaryを停止し、ディレクトリ全体をコピーする。コピーが完了するまでPrimaryは停止したままにする。
+
+```sh
+cp -R ./data/primary ./data/secondary1
+cp -R ./data/primary ./data/secondary2
+```
+
+Primaryを再起動する。
+
+```sh
+go run ./cmd/explorer -role primary -data ./data/primary
+```
+
+別のターミナルでSecondary 1を起動する。
+
+```sh
+go run ./cmd/explorer -role secondary -upstream http://localhost:8080 -port 8081 -data ./data/secondary1
+```
+
+さらに別のターミナルでSecondary 2を起動する。
+
+```sh
+go run ./cmd/explorer -role secondary -upstream http://localhost:8080 -port 8082 -data ./data/secondary2
+```
+
+次回以降は各ノードの起動コマンドだけを実行する。Primaryとして初期化済みの保存先にはマイグレーションを実行できないため、初回準備は繰り返さない。
+
+各プロセスは専用ディレクトリを使用する。Primaryの複製ログは全件保持し、自動削除しない。
+
+PrimaryのExplorerに、通信したSecondaryのポート、最後に報告した適用済みLSN、Primaryとの差、最終通信時刻を表示する。ノード名をクリックすると、そのノードの行データ・スキーマ・B-treeを確認できる。一覧はPrimaryの起動中に受けた報告から作り、2秒ごとに表示を更新する。

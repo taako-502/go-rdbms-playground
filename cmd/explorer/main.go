@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"time"
 
 	"github.com/taako-502/go-rdbms-playground/internal/explorer"
@@ -27,18 +28,23 @@ func run() error {
 	data := flag.String("data", "./data", "database directory")
 	port := flag.Int("port", 8080, "localhost HTTP port")
 	demo := flag.Bool("demo", true, "apply sample migrations and seed an empty users table")
+	role := flag.String("role", "", "replication role: primary or secondary")
+	upstream := flag.String("upstream", "", "primary URL for a secondary")
 	flag.Parse()
+	if (*role == "secondary") != (*upstream != "") {
+		return fmt.Errorf("secondary requires -upstream; other roles must omit it")
+	}
 	if *port < 1 || *port > 65535 {
 		return fmt.Errorf("port must be between 1 and 65535")
 	}
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
-	db, err := rdb.Open(*data)
+	db, err := rdb.OpenExplorer(*data, *role)
 	if err != nil {
 		return err
 	}
 	defer db.Close()
-	if *demo {
+	if *demo && db.Role() == "" {
 		if err = seed(ctx, db); err != nil {
 			return err
 		}
@@ -47,10 +53,67 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Handler: explorer.New(db), ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	return serveNode(ctx, stop, db, listener, *upstream)
+}
+
+func serveNode(ctx context.Context, stop func(), db *rdb.DB, listener net.Listener, upstream string) error {
+	defer listener.Close()
+	role := db.Role()
+	port := listener.Addr().(*net.TCPAddr).Port
+	mux := http.NewServeMux()
+	monitor := newReplicaMonitor()
+	ui := explorer.NewWithWipe(db, stop)
+	if role == "secondary" {
+		mux.Handle("POST /api/settings/wipe", http.NewCrossOriginProtection().Handler(removeSelf(db, port, primaryLink(upstream), localPeerClient())))
+	} else {
+		mux.HandleFunc("POST /api/settings/wipe", func(w http.ResponseWriter, r *http.Request) {
+			if !monitor.operations.TryLock() {
+				clusterResponse(w, http.StatusConflict, "別の処理が実行中です。")
+				return
+			}
+			defer monitor.operations.Unlock()
+			ui.ServeHTTP(w, r)
+		})
+	}
+	mux.Handle("/", ui)
+	mux.HandleFunc("GET /api/replication/status", monitor.status(db, port, primaryLink(upstream)))
+	if role != "secondary" {
+		children, cancelChildren := context.WithCancel(ctx)
+		var workers sync.WaitGroup
+		defer func() { cancelChildren(); workers.Wait() }()
+		manager := secondaryManager{children, &workers, db, monitor, port}
+		if db.Role() == "primary" {
+			if err := monitor.loadPeers(db.Directory()); err != nil {
+				return err
+			}
+			if err := manager.restore(); err != nil {
+				return err
+			}
+		}
+		protection := http.NewCrossOriginProtection()
+		removeSecondary := protection.Handler(monitor.removeSecondary(db, localPeerClient()))
+		mux.Handle("GET /api/settings/replication/secondaries/{port}", removeSecondary)
+		mux.Handle("DELETE /api/settings/replication/secondaries/{port}", removeSecondary)
+		mux.Handle("POST /api/settings/replication/secondaries", protection.Handler(http.HandlerFunc(manager.add)))
+		mux.Handle("POST /api/settings/replication/on", protection.Handler(monitor.enableReplication(db)))
+		mux.Handle("GET /api/settings/replication/off", protection.Handler(monitor.disablePreview(db, localPeerClient())))
+		mux.Handle("POST /api/settings/replication/off", protection.Handler(monitor.clusterAction(db, nil, localPeerClient())))
+		mux.Handle("POST /api/settings/wipe-cluster", protection.Handler(monitor.wipeCluster(db, stop, localPeerClient())))
+		mux.HandleFunc("GET /replication/log", logHandler(db, monitor))
+	}
+	if role == "secondary" {
+		protection := http.NewCrossOriginProtection()
+		mux.Handle("GET "+peerWipePath, protection.Handler(peerWipe(db, stop)))
+		mux.Handle("POST "+peerWipePath, protection.Handler(peerWipe(db, stop)))
+		workerCtx, cancel := context.WithCancel(ctx)
+		finished := make(chan struct{})
+		go func() { defer close(finished); follow(workerCtx, db, upstream, port) }()
+		defer func() { cancel(); <-finished }()
+	}
+	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
-	log.Printf("Database explorer: http://%s (data: %s)", listener.Addr(), *data)
+	log.Printf("Database explorer: http://%s (data: %s)", listener.Addr(), db.Directory())
 	select {
 	case err := <-done:
 		if errors.Is(err, http.ErrServerClosed) {

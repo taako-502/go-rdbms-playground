@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -24,12 +25,14 @@ type tableState struct {
 	indexes map[string]*btree
 }
 type DB struct {
-	mu     sync.Mutex
-	dir    string
-	cat    catalog
-	tables map[string]*tableState
-	closed bool
-	failed bool
+	role    string
+	replica Position
+	mu      sync.Mutex
+	dir     string
+	cat     catalog
+	tables  map[string]*tableState
+	closed  bool
+	failed  bool
 	// testHook is package-private fault injection; callbacks run under mu.
 	testHook func(string) error
 	history  []appliedMigration
@@ -45,6 +48,10 @@ var opened = struct {
 }{paths: map[string]bool{}}
 
 func Open(dir string) (*DB, error) {
+	return open(dir, "")
+}
+
+func open(dir, role string) (*DB, error) {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return nil, err
@@ -71,6 +78,9 @@ func Open(dir string) (*DB, error) {
 		}
 	}()
 	if err = syncDir(filepath.Dir(abs)); err != nil {
+		return nil, err
+	}
+	if err = finishWipe(abs); err != nil {
 		return nil, err
 	}
 	b, err := os.ReadFile(filepath.Join(abs, "catalog.json"))
@@ -122,6 +132,37 @@ func Open(dir string) (*DB, error) {
 	if err = db.loadHistory(); err != nil {
 		return nil, err
 	}
+	if strings.HasPrefix(role, "explorer-") {
+		role = strings.TrimPrefix(role, "explorer-")
+		data, readErr := os.ReadFile(filepath.Join(abs, modeFile))
+		if readErr == nil {
+			var mode string
+			if err = json.Unmarshal(data, &mode); err != nil {
+				return nil, err
+			}
+			switch mode {
+			case "primary":
+				role = "primary"
+			case "standalone":
+				role = ""
+			case "disabling":
+				role = ""
+				if err = db.disableReplication(); err != nil {
+					return nil, err
+				}
+			default:
+				return nil, ErrCorrupt
+			}
+		} else if !errors.Is(readErr, os.ErrNotExist) {
+			return nil, readErr
+		}
+	}
+	if err = db.initReplication(role); err != nil {
+		return nil, err
+	}
+	if err = db.finishReset(); err != nil {
+		return nil, err
+	}
 	success = true
 	return db, nil
 }
@@ -151,6 +192,10 @@ func (db *DB) hit(point string) error {
 func (db *DB) Close() error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
+	return db.closeLocked()
+}
+
+func (db *DB) closeLocked() error {
 	if db.closed {
 		return nil
 	}
@@ -178,6 +223,9 @@ func (db *DB) RawTable(name string) (*RawTable, error) {
 func (db *DB) CreateTable(ctx context.Context, s Schema) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
+	if db.role != "" {
+		return ErrReplicaReadOnly
+	}
 	return db.createTable(ctx, s)
 }
 func (db *DB) createTable(ctx context.Context, s Schema) error {
@@ -224,6 +272,9 @@ func (t *RawTable) Insert(ctx context.Context, row Row) error {
 		return err
 	}
 	st := db.tables[t.name]
+	if st == nil {
+		return ErrNotFound
+	}
 	r, err := st.def.Schema.validateRow(row)
 	if err != nil {
 		return err
@@ -232,6 +283,15 @@ func (t *RawTable) Insert(ctx context.Context, row Row) error {
 	if len(st.indexes[pk].search(makeKey(r[pk]))) > 0 {
 		return ErrDuplicate
 	}
+	if db.role == "secondary" {
+		return ErrReplicaReadOnly
+	}
+	if db.role == "primary" {
+		return db.logInsert(t.name, r)
+	}
+	return db.appendRow(st, r)
+}
+func (db *DB) appendRow(st *tableState, r Row) error {
 	off, err := st.rows.append(r)
 	if err != nil {
 		return db.fail(err)
