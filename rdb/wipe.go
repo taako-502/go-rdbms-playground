@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 )
 
 const wipeMarker = ".wipe-pending"
@@ -13,7 +14,8 @@ const wipeMarker = ".wipe-pending"
 // Directory returns the absolute path of the node's storage directory.
 func (db *DB) Directory() string { return db.dir }
 
-// Wipe removes this node's persisted database state and closes the database.
+// Wipe removes this node's database state, removes its directory if empty,
+// and closes the database.
 func (db *DB) Wipe(ctx context.Context) error {
 	db.mu.Lock()
 	defer db.mu.Unlock()
@@ -30,6 +32,17 @@ func (db *DB) Wipe(ctx context.Context) error {
 		}
 	}
 	if err := finishWipe(db.dir); err != nil {
+		return db.fail(err)
+	}
+	err := os.Remove(db.dir)
+	switch {
+	case err == nil:
+		if err := syncDir(filepath.Dir(db.dir)); err != nil {
+			return db.fail(err)
+		}
+	case errors.Is(err, syscall.ENOTEMPTY), errors.Is(err, syscall.EEXIST):
+		// Keep directories containing files outside the database.
+	default:
 		return db.fail(err)
 	}
 	return db.closeLocked()

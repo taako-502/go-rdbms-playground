@@ -60,6 +60,9 @@ func TestClusterWipePreflightAndCompletion(t *testing.T) {
 		t.Fatalf("unexpected online result: %d %s", response.Code, response.Body)
 	}
 	for _, path := range []string{dir, secondaryDir} {
+		if _, err := os.Stat(path); !os.IsNotExist(err) {
+			t.Fatalf("node directory still present: %s (%v)", path, err)
+		}
 		db, err := rdb.Open(path)
 		if err != nil {
 			t.Fatal(err)
