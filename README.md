@@ -123,18 +123,42 @@ Primaryの「レプリカセットを完全初期化」は、同じマシン上�
 
 Primaryだけが書き込みを受け付ける。SecondaryはHTTPでログを取得し、ローカルのB-treeから検索できる。Secondaryの台数上限は設けない。複製中はスキーマ固定で、自動昇格は行わない。Primaryで成功した直後の行はSecondaryにまだ届いていない場合がある。
 
-初回は次の順に準備する。コピー先には新しいディレクトリを使う。
+初回は次の順に準備する。Primary・Secondaryの保存先には、まだ存在しないディレクトリを使う。
 
-1. `go run ./cmd/migrate -data ./data/primary` でスキーマを用意する。
-2. `go run ./cmd/explorer -role primary -data ./data/primary` を起動して Ctrl+C で停止する。
-3. 停止中に `cp -R ./data/primary ./data/secondary1` と `cp -R ./data/primary ./data/secondary2` を実行する。これで行・インデックスと複製元ID・適用済みLSNを同じ時点でコピーできる。
-4. Primaryを同じコマンドで再起動する。別端末で次のコマンドをそれぞれ実行する。
+まずマイグレーションを適用し、Primaryを一度起動する。
+
+```sh
+go run ./cmd/migrate -data ./data/primary
+go run ./cmd/explorer -role primary -data ./data/primary
+```
+
+起動したらCtrl+CでPrimaryを停止し、ディレクトリ全体をコピーする。コピーが完了するまでPrimaryは停止したままにする。
+
+```sh
+cp -R ./data/primary ./data/secondary1
+cp -R ./data/primary ./data/secondary2
+```
+
+Primaryを再起動する。
+
+```sh
+go run ./cmd/explorer -role primary -data ./data/primary
+```
+
+別のターミナルでSecondary 1を起動する。
 
 ```sh
 go run ./cmd/explorer -role secondary -upstream http://localhost:8080 -port 8081 -data ./data/secondary1
+```
+
+さらに別のターミナルでSecondary 2を起動する。
+
+```sh
 go run ./cmd/explorer -role secondary -upstream http://localhost:8080 -port 8082 -data ./data/secondary2
 ```
 
-各プロセスは専用ディレクトリを使用する。初版ではPrimaryのログを全件保持する。
+次回以降は各ノードの起動コマンドだけを実行する。Primaryとして初期化済みの保存先にはマイグレーションを実行できないため、初回準備は繰り返さない。
+
+各プロセスは専用ディレクトリを使用する。Primaryの複製ログは全件保持し、自動削除しない。
 
 PrimaryのExplorerに、通信したSecondaryのポート、最後に報告した適用済みLSN、Primaryとの差、最終通信時刻を表示する。ノード名をクリックすると、そのノードの行データ・スキーマ・B-treeを確認できる。一覧はPrimaryの起動中に受けた報告から作り、2秒ごとに表示を更新する。
