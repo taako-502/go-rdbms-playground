@@ -59,13 +59,31 @@ func run() error {
 		return err
 	}
 	mux := http.NewServeMux()
-	mux.Handle("/", explorer.NewWithWipe(db, stop))
 	monitor := newReplicaMonitor()
+	ui := explorer.NewWithWipe(db, stop)
+	mux.HandleFunc("POST /api/settings/wipe", func(w http.ResponseWriter, r *http.Request) {
+		if !monitor.operations.TryLock() {
+			clusterResponse(w, http.StatusConflict, "別の処理が実行中です。")
+			return
+		}
+		defer monitor.operations.Unlock()
+		ui.ServeHTTP(w, r)
+	})
+	mux.Handle("/", ui)
 	mux.HandleFunc("GET /api/replication/status", monitor.status(db, *role, *port, primaryLink(*upstream)))
 	if *role == "primary" {
+		if err := monitor.loadPeers(db.Directory()); err != nil {
+			listener.Close()
+			return err
+		}
+		protection := http.NewCrossOriginProtection()
+		mux.Handle("POST /api/settings/wipe-cluster", protection.Handler(monitor.wipeCluster(db, stop, localPeerClient())))
 		mux.HandleFunc("GET /replication/log", logHandler(db, monitor))
 	}
 	if *role == "secondary" {
+		protection := http.NewCrossOriginProtection()
+		mux.Handle("GET "+peerWipePath, protection.Handler(peerWipe(db, stop)))
+		mux.Handle("POST "+peerWipePath, protection.Handler(peerWipe(db, stop)))
 		workerCtx, cancel := context.WithCancel(ctx)
 		finished := make(chan struct{})
 		go func() { defer close(finished); follow(workerCtx, db, *upstream, *port) }()

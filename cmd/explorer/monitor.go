@@ -17,15 +17,23 @@ type observation struct {
 	seen time.Time
 }
 type replicaMonitor struct {
-	mu    sync.Mutex
-	peers map[int]observation
+	operations sync.Mutex
+	peerDir    string
+	mu         sync.Mutex
+	peers      map[int]observation
 }
 
 func newReplicaMonitor() *replicaMonitor { return &replicaMonitor{peers: make(map[int]observation)} }
-func (m *replicaMonitor) observe(port int, lsn uint64, now time.Time) {
+func (m *replicaMonitor) observe(port int, lsn uint64, now time.Time) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if _, exists := m.peers[port]; !exists {
+		if err := m.persistPeer(port); err != nil {
+			return err
+		}
+	}
 	m.peers[port] = observation{lsn, now}
+	return nil
 }
 
 type nodeStatus struct {
@@ -42,6 +50,10 @@ func (m *replicaMonitor) status(db *rdb.DB, role string, port int, upstream stri
 		pos := db.Position()
 		nodes := []nodeStatus{{Role: role, Port: port, LSN: strconv.FormatUint(pos.LSN, 10)}}
 		for port, peer := range m.peers {
+			if peer.seen.IsZero() {
+				nodes = append(nodes, nodeStatus{Role: "secondary", Port: port, LSN: "—", LastSeen: &peer.seen})
+				continue
+			}
 			nodes = append(nodes, nodeStatus{Role: "secondary", Port: port, LSN: strconv.FormatUint(peer.lsn, 10), Lag: strconv.FormatUint(pos.LSN-peer.lsn, 10), LastSeen: &peer.seen})
 		}
 		m.mu.Unlock()

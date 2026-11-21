@@ -287,6 +287,7 @@ async function updateReplicaStatus() {
     if (!status.Role) return;
     $('replication').hidden = false;
     const secondary = status.Role === 'secondary';
+    $('wipe-cluster').hidden = status.Role !== 'primary';
     const primaryLink = $('primary-link');
     primaryLink.hidden = !(secondary && status.PrimaryURL);
     if (!primaryLink.hidden) {
@@ -309,7 +310,7 @@ async function updateReplicaStatus() {
       row.insertCell().textContent = node.Lag || '—';
       const seen = node.LastSeen && new Date(node.LastSeen);
       row.insertCell().textContent = seen
-        ? seen.toLocaleTimeString() + (Date.now() - seen.getTime() > 5000 ? '（応答待ち）' : '')
+        ? (seen.getUTCFullYear() === 1 ? '未確認' : seen.toLocaleTimeString()) + (Date.now() - seen.getTime() > 5000 ? '（応答待ち）' : '')
         : 'このノード';
       return row;
     });
@@ -368,6 +369,23 @@ $('wipe-node').addEventListener('click', async () => {
     $('replication').hidden = true;
     $('tables').replaceChildren();
     notice('完全初期化しました。同じ保存先でマイグレーションを実行できます。');
+  } catch (error) {
+    notice(error.message, true);
+    busy(false);
+  }
+});
+
+$('wipe-cluster').addEventListener('click', async () => {
+  if (state.busy) return;
+  if (!window.confirm('登録済みのSecondaryとPrimaryのDBファイル・複製ログを削除し、各Explorerを停止します。この操作は元に戻せません。実行しますか？')) return;
+  $('settings').close();
+  busy(true);
+  try {
+    await request('/api/settings/wipe-cluster', { method: 'POST' });
+    $('table-content').hidden = true;
+    $('replication').hidden = true;
+    $('tables').replaceChildren();
+    notice('レプリカセットを完全初期化しました。');
   } catch (error) {
     notice(error.message, true);
     busy(false);

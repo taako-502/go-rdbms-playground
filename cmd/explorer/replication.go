@@ -16,6 +16,11 @@ import (
 
 func logHandler(db *rdb.DB, monitor *replicaMonitor) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if !monitor.operations.TryLock() {
+			http.Error(w, "replication busy", http.StatusServiceUnavailable)
+			return
+		}
+		defer monitor.operations.Unlock()
 		q := r.URL.Query()
 		after, err := strconv.ParseUint(q.Get("after"), 10, 64)
 		if err != nil {
@@ -29,7 +34,10 @@ func logHandler(db *rdb.DB, monitor *replicaMonitor) http.HandlerFunc {
 		}
 		port, _ := strconv.Atoi(q.Get("port"))
 		if port > 0 && port <= 65535 {
-			monitor.observe(port, after, time.Now())
+			if err := monitor.observe(port, after, time.Now()); err != nil {
+				http.Error(w, "cannot register Secondary", http.StatusInternalServerError)
+				return
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Cache-Control", "no-store")
