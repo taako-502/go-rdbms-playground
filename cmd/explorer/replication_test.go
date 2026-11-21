@@ -89,4 +89,28 @@ func TestReplicaCatchUp(t *testing.T) {
 			t.Fatalf("position=%v rows=%v err=%v", node.Position(), rows, err)
 		}
 	}
+	for _, mode := range []rdb.ResetMode{rdb.ResetRows, rdb.ResetAll} {
+		if err := primary.Reset(ctx, mode); err != nil {
+			t.Fatal(err)
+		}
+		syncReplica(first, 8081)
+		syncReplica(second, 8082)
+		for _, node := range []*rdb.DB{primary, first, second} {
+			users, err := node.RawTable("users")
+			if mode == rdb.ResetAll {
+				if err == nil {
+					t.Fatal("table definition survived reset")
+				}
+				continue
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			rows, err := users.All(ctx)
+			if err != nil || len(rows) != 0 {
+				t.Fatalf("rows after reset: %v, %v", rows, err)
+			}
+		}
+	}
+
 }

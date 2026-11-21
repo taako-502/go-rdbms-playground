@@ -19,6 +19,7 @@ type Position struct {
 	LSN    uint64
 }
 type LogEntry struct {
+	Reset ResetMode `json:",omitempty"`
 	LSN   uint64
 	Table string
 	Row   json.RawMessage
@@ -86,18 +87,44 @@ func (db *DB) logInsert(table string, row Row) error {
 	if err != nil {
 		return err
 	}
-	entry := LogEntry{db.replica.LSN + 1, table, data}
-	if err = atomicJSON(db.logPath(entry.LSN), entry); err != nil {
+	return db.writeEntry(LogEntry{Table: table, Row: data})
+}
+
+func (db *DB) writeEntry(entry LogEntry) error {
+	entry.LSN = db.replica.LSN + 1
+	if err := atomicJSON(db.logPath(entry.LSN), entry); err != nil {
 		return db.fail(err)
 	}
-	if err = db.hit("log_synced"); err != nil {
+	if err := db.hit("log_synced"); err != nil {
 		return db.fail(err)
 	}
 	return db.fail(db.replay(entry))
 }
 func (db *DB) replay(e LogEntry) error {
+	if e.LSN != db.replica.LSN+1 {
+		return ErrCorrupt
+	}
+	if e.Reset != "" {
+		if err := db.applyReset(e.Reset); err != nil {
+			return err
+		}
+	} else if err := db.replayRow(e); err != nil {
+		return err
+	}
+	next := Position{db.replica.Source, e.LSN}
+	if err := db.hit("before_checkpoint"); err != nil {
+		return err
+	}
+	if err := atomicJSON(filepath.Join(db.dir, "replica.json"), next); err != nil {
+		return err
+	}
+	db.replica = next
+	return nil
+}
+
+func (db *DB) replayRow(e LogEntry) error {
 	st := db.tables[e.Table]
-	if st == nil || e.LSN != db.replica.LSN+1 {
+	if st == nil {
 		return ErrCorrupt
 	}
 	row, err := decodeRow(e.Row, st.def.Schema)
@@ -117,14 +144,6 @@ func (db *DB) replay(e LogEntry) error {
 	} else if err = db.appendRow(st, row); err != nil {
 		return err
 	}
-	next := Position{db.replica.Source, e.LSN}
-	if err = db.hit("before_checkpoint"); err != nil {
-		return err
-	}
-	if err = atomicJSON(filepath.Join(db.dir, "replica.json"), next); err != nil {
-		return err
-	}
-	db.replica = next
 	return nil
 }
 func (db *DB) Position() Position { db.mu.Lock(); defer db.mu.Unlock(); return db.replica }

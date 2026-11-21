@@ -9,6 +9,7 @@
  <a class="brand" href="/" aria-label="RDB Explorer ホーム"><span class="brand-icon">▤</span><span>RDB<span class="brand-light"> Explorer</span></span></a>
  <div class="connection"><span class="dot"></span> LOCAL DATABASE <span class="connection-label">Go / Embedded</span></div>
  <div class="section-label">TABLES <span id="table-count">0</span></div>
+ <button id="open-settings" class="secondary" type="button">設定</button>
  <nav id="tables" aria-label="テーブル一覧"></nav>
 </aside>
 <main>
@@ -54,5 +55,16 @@
   </div>
  </section>
 </main>
+<dialog id="settings" aria-labelledby="settings-heading">
+ <h2 id="settings-heading">データベース設定</h2>
+ <p id="reset-readonly" hidden>リセットはPrimaryから実行できます。</p>
+ <div id="reset-actions">
+  <p>全テーブルの行を削除します。テーブル定義とインデックスは残ります。</p>
+  <button class="secondary" type="button" data-reset="rows">全データを削除</button>
+  <p>行、テーブル定義、インデックス、マイグレーション履歴を初期化します。</p>
+  <button class="secondary" type="button" data-reset="all">DBを初期化</button>
+ </div>
+ <form method="dialog"><button class="secondary">閉じる</button></form>
+</dialog>
 </body>
 </html>

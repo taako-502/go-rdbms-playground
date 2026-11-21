@@ -39,6 +39,9 @@ func (q RawQuery) All(ctx context.Context) ([]Row, error) {
 		return nil, err
 	}
 	st := db.tables[q.table.name]
+	if st == nil {
+		return nil, ErrNotFound
+	}
 	var value any
 	if q.predicate != nil {
 		c, err := st.def.Schema.column(q.predicate.column)

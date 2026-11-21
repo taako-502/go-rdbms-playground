@@ -27,6 +27,7 @@ func New(db *rdb.DB) http.Handler {
 	mux.HandleFunc("GET /api/tables/{table}/indexes/{column}", s.index)
 	mux.HandleFunc("GET /api/tables/{table}/rows", s.rows)
 	mux.HandleFunc("POST /api/tables/{table}/rows", s.insert)
+	mux.HandleFunc("POST /api/settings/reset/{mode}", s.reset)
 	static, err := fs.Sub(assets, "static")
 	if err != nil {
 		panic(err)
@@ -201,4 +202,21 @@ func (s *server) insert(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 201, map[string]any{"row": browserRow(row)})
+}
+
+func (s *server) reset(w http.ResponseWriter, r *http.Request) {
+	mode := rdb.ResetMode(r.PathValue("mode"))
+	if mode != rdb.ResetRows && mode != rdb.ResetAll {
+		writeError(w, http.StatusBadRequest, "リセットの種類が不明です。")
+		return
+	}
+	if err := s.db.Reset(r.Context(), mode); err != nil {
+		if errors.Is(err, rdb.ErrReplicaReadOnly) {
+			writeError(w, http.StatusForbidden, "Primaryの設定画面から実行してください。")
+		} else {
+			fail(w, err)
+		}
+		return
+	}
+	writeJSON(w, http.StatusOK, struct{}{})
 }

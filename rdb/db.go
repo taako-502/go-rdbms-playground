@@ -131,6 +131,9 @@ func open(dir, role string) (*DB, error) {
 	if err = db.initReplication(role); err != nil {
 		return nil, err
 	}
+	if err = db.finishReset(); err != nil {
+		return nil, err
+	}
 	success = true
 	return db, nil
 }
@@ -236,6 +239,9 @@ func (t *RawTable) Insert(ctx context.Context, row Row) error {
 		return err
 	}
 	st := db.tables[t.name]
+	if st == nil {
+		return ErrNotFound
+	}
 	r, err := st.def.Schema.validateRow(row)
 	if err != nil {
 		return err

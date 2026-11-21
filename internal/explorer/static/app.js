@@ -288,6 +288,8 @@ async function updateReplicaStatus() {
     $('replication').hidden = false;
     const secondary = status.Role === 'secondary';
     document.querySelector('.insert-panel').hidden = secondary;
+    $('reset-actions').hidden = secondary;
+    $('reset-readonly').hidden = !secondary;
     $('replica-state').textContent = secondary ? 'このノードは読み取り専用' : '直近の報告値・2秒ごとに更新';
     const rows = status.Nodes.map(node => {
       const row = document.createElement('tr');
@@ -312,3 +314,26 @@ async function updateReplicaStatus() {
   setTimeout(updateReplicaStatus, 2000);
 }
 updateReplicaStatus();
+
+$('open-settings').addEventListener('click', () => $('settings').showModal());
+document.querySelectorAll('[data-reset]').forEach(button => {
+  button.addEventListener('click', async () => {
+    if (state.busy) return;
+    const mode = button.dataset.reset;
+    const scope = mode === 'all'
+      ? '全テーブルの行・定義・インデックス・マイグレーション履歴'
+      : '全テーブルの行';
+    if (!window.confirm(scope + 'を削除します。この操作は元に戻せません。実行しますか？')) return;
+    $('settings').close();
+    busy(true);
+    try {
+      await request('/api/settings/reset/' + mode, { method: 'POST' });
+      busy(false);
+      await refresh();
+    } catch (error) {
+      notice(error.message, true);
+    } finally {
+      busy(false);
+    }
+  });
+});
