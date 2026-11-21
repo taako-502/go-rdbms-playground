@@ -36,3 +36,7 @@ go.work.sum
 # Local explorer database
 /data/*
 !/data/README.md
+
+# Local replication databases
+/primary/
+/secondary[0-9]*/
