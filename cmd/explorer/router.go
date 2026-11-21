@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 
+	"github.com/taako-502/go-rdbms-playground/internal/explorer"
 	"github.com/taako-502/go-rdbms-playground/rdb"
 )
 
@@ -25,6 +26,7 @@ type clusterRouter struct {
 
 func (c *clusterRouter) handler() http.Handler {
 	m := http.NewServeMux()
+	m.HandleFunc("GET /random-row.js", explorer.ServeRandomRowScript)
 	m.HandleFunc("GET /{$}", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.Write(routerPage)

@@ -257,6 +257,8 @@
         width: 100%;
       }
     }
+  .insert-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    #random-fill { background: transparent; color: var(--mint); border: 1px solid var(--line); }
   </style>
   <main>
     <header>
@@ -272,7 +274,8 @@
         <h2>行を追加</h2>
         <form id="insert">
           <div id="fields"></div>
-          <output id="preview"></output><button>行を保存</button>
+          <output id="preview"></output>
+          <div class="insert-actions"><button type="button" id="random-fill" disabled>ランダム入力</button><button type="submit">行を保存</button></div>
         </form>
         <output id="saved" aria-live="polite"></output>
       </section>
@@ -288,6 +291,7 @@
     </div>
     <p role="alert" id="error"></p>
   </main>
+  <script src="/random-row.js"></script>
   <script>
     const el = (id) => document.getElementById(id);
     let catalog,
@@ -316,10 +320,20 @@
       a.dataset.slot = i;
       return a;
     }
+    let primaryKeys = new Set();
+    el("random-fill").onclick = () => {
+      try {
+        fillSampleRow(el("insert"), schema, primaryKeys);
+        el("error").replaceChildren();
+        preview();
+      } catch (error) { showError(error); }
+    };
     async function counts() {
       const id = ++countId,
         rows = await api("/rows/" + schema.name);
       if (id !== countId) return;
+      primaryKeys = new Set(rows.flat().map(row => String(row[schema.primary_key])));
+      el("random-fill").disabled = false;
       el("members").replaceChildren(
         ...rows.map((group, i) => {
           const item = link(i);
@@ -361,6 +375,7 @@
       }
     }
     function select() {
+      el("random-fill").disabled = true;
       generation++;
       queryId++;
       countId++;
@@ -394,13 +409,15 @@
       el("saved").replaceChildren();
       el("error").replaceChildren();
       try {
+        const input = Object.fromEntries(new FormData(e.target));
         const r = await api("/rows/" + schema.name, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
+          body: JSON.stringify(input),
         });
         if (g !== generation) return;
         el("saved").replaceChildren(link(r.Slot), "に保存しました");
+        primaryKeys.add(input[schema.primary_key]);
         await counts();
       } catch (e) {
         showError(e);
