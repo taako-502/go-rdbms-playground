@@ -87,6 +87,9 @@ func serveNode(ctx context.Context, stop func(), db *rdb.DB, listener net.Listen
 			}
 		}
 		protection := http.NewCrossOriginProtection()
+		removeSecondary := protection.Handler(monitor.removeSecondary(db, localPeerClient()))
+		mux.Handle("GET /api/settings/replication/secondaries/{port}", removeSecondary)
+		mux.Handle("DELETE /api/settings/replication/secondaries/{port}", removeSecondary)
 		mux.Handle("POST /api/settings/replication/secondaries", protection.Handler(http.HandlerFunc(manager.add)))
 		mux.Handle("POST /api/settings/replication/on", protection.Handler(monitor.enableReplication(db)))
 		mux.Handle("GET /api/settings/replication/off", protection.Handler(monitor.disablePreview(db, localPeerClient())))

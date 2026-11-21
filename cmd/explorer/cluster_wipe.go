@@ -98,6 +98,10 @@ func peerWipe(db *rdb.DB, stop func()) http.HandlerFunc {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		if expected := r.Header.Get("X-Replica-Directory"); expected != "" && expected != url.QueryEscape(db.Directory()) {
+			clusterResponse(w, 409, "保存先が変更されました。")
+			return
+		}
 		if err := db.Wipe(r.Context()); err != nil {
 			clusterResponse(w, http.StatusInternalServerError, err.Error())
 			return
@@ -108,13 +112,16 @@ func peerWipe(db *rdb.DB, stop func()) http.HandlerFunc {
 	}
 }
 
-func callPeer(ctx context.Context, client *http.Client, method string, port int, source string) (string, error) {
+func callPeer(ctx context.Context, client *http.Client, method string, port int, source string, expectedDir ...string) (string, error) {
 	endpoint := fmt.Sprintf("http://127.0.0.1:%d%s", port, peerWipePath)
 	req, err := http.NewRequestWithContext(ctx, method, endpoint, nil)
 	if err != nil {
 		return "", err
 	}
 	req.Header.Set(sourceHeader, source)
+	if len(expectedDir) > 0 {
+		req.Header.Set("X-Replica-Directory", url.QueryEscape(expectedDir[0]))
+	}
 	res, err := client.Do(req)
 	if err != nil {
 		return "", err
@@ -259,5 +266,45 @@ func localPeerClient() *http.Client {
 		Timeout:       5 * time.Second,
 		Transport:     &http.Transport{},
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
+// removeSecondary previews and removes only the registered peer at the requested port.
+func (m *replicaMonitor) removeSecondary(db *rdb.DB, client *http.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		m.operations.Lock()
+		defer m.operations.Unlock()
+		port, err := strconv.Atoi(r.PathValue("port"))
+		if err != nil || db.Role() != "primary" || !slices.Contains(m.ports(), port) {
+			clusterResponse(w, 404, "登録済みのSecondaryが見つかりません。")
+			return
+		}
+		source := db.Position().Source
+		dir, err := callPeer(r.Context(), client, http.MethodGet, port, source)
+		if err != nil || dir == "" {
+			clusterResponse(w, 409, "対象のSecondaryに接続できません。起動してから再実行してください。")
+			return
+		}
+		target := removalPlan{Source: source, Targets: []peerTarget{{port, dir}}}
+		if r.Method == http.MethodGet {
+			w.Header().Set("Cache-Control", "no-store")
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(target)
+			return
+		}
+		var confirmed removalPlan
+		if err := json.NewDecoder(r.Body).Decode(&confirmed); err != nil || confirmed.Source != source || !slices.Equal(confirmed.Targets, target.Targets) {
+			clusterResponse(w, 409, "削除対象を再確認してください。")
+			return
+		}
+		if _, err := callPeer(context.WithoutCancel(r.Context()), client, http.MethodPost, port, source, dir); err != nil {
+			clusterResponse(w, 409, "Secondaryの消去を確認できません。")
+			return
+		}
+		if err := m.forgetPeer(port); err != nil {
+			clusterResponse(w, 500, "Secondaryを消去しましたが、登録の削除に失敗しました。")
+			return
+		}
+		clusterResponse(w, 200, "")
 	}
 }

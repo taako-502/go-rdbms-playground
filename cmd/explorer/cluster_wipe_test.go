@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -150,5 +151,65 @@ func TestReplicationSwitchPreservesPrimary(t *testing.T) {
 	}
 	if w := run(monitor.enableReplication(db), "POST", ""); w.Code != 200 || db.Position().Source == source {
 		t.Fatal("new lineage not created")
+	}
+}
+
+func TestRemoveOneSecondary(t *testing.T) {
+	primary, err := rdb.OpenReplica(t.TempDir(), "primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer primary.Close()
+	dir := filepath.Join(t.TempDir(), "secondary")
+	if err := primary.SnapshotSecondary(t.Context(), dir); err != nil {
+		t.Fatal(err)
+	}
+	peer, err := rdb.OpenReplica(dir, "secondary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	m := newReplicaMonitor()
+	if err := m.loadPeers(primary.Directory()); err != nil {
+		t.Fatal(err)
+	}
+	for _, port := range []int{8081, 8082} {
+		if err := m.observe(port, 0, time.Now()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stopped := false
+	handler := m.removeSecondary(primary, &http.Client{Transport: handlerTransport{http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Port() != "8081" {
+			t.Fatalf("unexpected target %s", r.URL)
+		}
+		peerWipe(peer, func() { stopped = true })(w, r)
+	})}})
+	run := func(method, body string) *httptest.ResponseRecorder {
+		r := httptest.NewRequest(method, "/", strings.NewReader(body))
+		r.SetPathValue("port", "8081")
+		w := httptest.NewRecorder()
+		handler(w, r)
+		return w
+	}
+	plan := run("GET", "")
+	if plan.Code != 200 || stopped {
+		t.Fatal(plan.Body.String())
+	}
+	if w := run("DELETE", "{}"); w.Code != 409 || stopped {
+		t.Fatal(w.Body.String())
+	}
+	if w := run("DELETE", plan.Body.String()); w.Code != 200 || !stopped {
+		t.Fatal(w.Body.String())
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("secondary still exists")
+	}
+	restored := newReplicaMonitor()
+	if err := restored.loadPeers(primary.Directory()); err != nil {
+		t.Fatal(err)
+	}
+	if ports := restored.ports(); len(ports) != 1 || ports[0] != 8082 || primary.Role() != "primary" {
+		t.Fatal(ports)
 	}
 }

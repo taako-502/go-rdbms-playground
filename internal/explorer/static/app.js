@@ -285,6 +285,15 @@ async function updateReplicaStatus() {
   try {
     const status = await request('/api/replication/status');
     const toggle = $('replica-mode');
+    $('replica-config').hidden = status.Role === 'secondary';
+    const ports = status.Nodes.filter(node => node.Role === 'secondary').map(node => String(node.Port));
+    const select = $('remove-port');
+    $('remove-secondary').hidden = status.Role !== 'primary' || ports.length === 0;
+    if (Array.from(select.options, option => option.value).join(',') !== ports.join(',')) {
+      const previous = select.value;
+      select.replaceChildren(...ports.map(port => new Option('Secondary · ' + port, port)));
+      if (ports.includes(previous)) select.value = previous;
+    }
     $('add-secondary').hidden = status.Role !== 'primary';
     const input = $('secondary-port');
     if (status.Role === 'primary' && !input.value && document.activeElement !== input) {
@@ -334,9 +343,13 @@ async function updateReplicaStatus() {
   } catch {
     $('replica-state').textContent = '更新失敗';
   }
-  setTimeout(updateReplicaStatus, 2000);
+
 }
-updateReplicaStatus();
+async function pollReplicaStatus() {
+  await updateReplicaStatus();
+  setTimeout(pollReplicaStatus, 2000);
+}
+pollReplicaStatus();
 
 $('open-settings').addEventListener('click', () => $('settings').showModal());
 document.querySelectorAll('[data-reset]').forEach(button => {
@@ -450,6 +463,27 @@ $('add-secondary').addEventListener('submit', async event => {
     notice(error.message, true);
   } finally {
     $('settings').close();
+    await updateReplicaStatus();
+    busy(false);
+  }
+});
+
+$('remove-secondary').addEventListener('submit', async event => {
+  event.preventDefault();
+  if (state.busy) return;
+  const port = $('remove-port').value;
+  const path = '/api/settings/replication/secondaries/' + encodeURIComponent(port);
+  busy(true);
+  try {
+    const plan = await request(path);
+    if (!window.confirm('Secondary · ' + port + ' を停止し、次の保存先のDBを削除します。\n' + plan.Targets[0].Directory + '\n削除しますか？')) return;
+    await request(path, {method: 'DELETE', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(plan)});
+    $('settings').close();
+    notice('Secondary · ' + port + ' を削除しました。');
+  } catch (error) {
+    $('settings').close();
+    notice(error.message, true);
+  } finally {
     await updateReplicaStatus();
     busy(false);
   }

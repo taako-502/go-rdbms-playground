@@ -57,23 +57,37 @@
  </section>
 </main>
 <dialog id="settings" aria-labelledby="settings-heading">
- <h2 id="settings-heading">データベース設定</h2>
- <button id="replica-mode" class="secondary" type="button" hidden></button>
- <form id="add-secondary" hidden>
-  <label>Secondaryのポート <input id="secondary-port" type="number" min="1" max="65535" required></label>
-  <button class="secondary" type="submit">Secondaryを追加・起動</button>
- </form>
- <p id="reset-readonly" hidden>リセットはPrimaryから実行できます。</p>
- <div id="reset-actions">
-  <p>全テーブルの行を削除します。テーブル定義とインデックスは残ります。</p>
-  <button class="secondary" type="button" data-reset="rows">全データを削除</button>
-  <p>行、テーブル定義、インデックス、マイグレーション履歴を初期化します。</p>
-  <button class="secondary" type="button" data-reset="all">DBを初期化</button>
+ <div class="settings-head">
+  <h2 id="settings-heading">データベース設定</h2>
+  <form method="dialog"><button class="settings-close" aria-label="設定を閉じる">×</button></form>
  </div>
- <p id="wipe-directory"></p>
- <button id="wipe-node" class="secondary" type="button" hidden>このノードを完全初期化</button>
- <button id="wipe-cluster" class="secondary" type="button" hidden>レプリカセットを完全初期化</button>
- <form method="dialog"><button class="secondary">閉じる</button></form>
+ <div class="settings-body">
+  <section class="settings-card" id="replica-config" hidden>
+   <div class="settings-line"><h3>レプリカセット</h3><button id="replica-mode" class="secondary" type="button" hidden></button></div>
+   <form id="add-secondary" class="settings-line" hidden>
+    <label for="secondary-port">Secondaryの追加</label>
+    <div class="settings-controls"><input id="secondary-port" aria-label="Secondaryのポート" type="number" min="1" max="65535" required><button class="secondary" type="submit">追加・起動</button></div>
+   </form>
+   <form id="remove-secondary" class="settings-line" hidden>
+    <label for="remove-port">複製先の削除</label>
+    <div class="settings-controls"><select id="remove-port"></select><button class="secondary destructive" type="submit">削除</button></div>
+   </form>
+  </section>
+  <section class="settings-card">
+   <h3>データの初期化</h3>
+   <p id="reset-readonly" hidden>データの初期化はPrimaryから実行できます。</p>
+   <div id="reset-actions">
+    <div class="settings-line"><p>テーブル定義を保持して行を消去</p><button class="secondary destructive" type="button" data-reset="rows">全データを削除</button></div>
+    <div class="settings-line"><p>定義・インデックス・移行履歴も消去</p><button class="secondary destructive" type="button" data-reset="all">DBを初期化</button></div>
+   </div>
+  </section>
+  <section class="settings-card wipe-settings">
+   <h3>完全初期化</h3>
+   <p id="wipe-directory"></p>
+   <div class="settings-controls"><button id="wipe-node" class="secondary destructive" type="button" hidden>このノードを完全初期化</button>
+   <button id="wipe-cluster" class="secondary destructive" type="button" hidden>レプリカセットを完全初期化</button></div>
+  </section>
+ </div>
 </dialog>
 </body>
 </html>
