@@ -256,8 +256,8 @@ async function refresh() {
   if (state.busy) return;
   busy(true); notice('');
   try {
-    const current = state.selected?.schema.name;
-    const data = await request('/api/tables'); state.tables = data.tables;
+    const current = state.selected?.schema.name ?? new URLSearchParams(location.search).get('table');
+    const data = await request('/api/tables'); state.tables = data.tables; state.shard = data.shard !== undefined; if (state.shard) document.querySelector('.insert-panel').hidden = true;
     selectTable(current); busy(true);
     if (state.selected) await loadTable();
   } catch (error) { notice(`読み込みに失敗しました。${error.message}`, true); }
@@ -319,7 +319,7 @@ async function updateReplicaStatus() {
       primaryLink.href = status.PrimaryURL;
       primaryLink.textContent = 'Primaryに戻る (' + status.PrimaryURL + ')';
     }
-    document.querySelector('.insert-panel').hidden = secondary;
+    document.querySelector('.insert-panel').hidden = secondary || state.shard;
     $('reset-actions').hidden = secondary;
     $('reset-readonly').hidden = !secondary;
     $('replica-state').textContent = secondary ? 'このノードは読み取り専用' : '直近の報告値・2秒ごとに更新';

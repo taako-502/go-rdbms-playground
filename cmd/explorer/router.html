@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="ja">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>シャードルーター</title>
+  <style>
+    body {
+      font: 16px system-ui;
+      color: #223348;
+      background: #f3f5f7;
+      max-width: 62rem;
+      margin: auto;
+      padding: 1.5rem;
+    }
+    section {
+      background: white;
+      border: 1px solid #ccd7de;
+      border-radius: 8px;
+      padding: 1rem;
+      margin: 1rem 0;
+    }
+    label {
+      display: inline-grid;
+      gap: 0.2rem;
+      margin: 0.3rem;
+    }
+    input,
+    select,
+    button {
+      font: inherit;
+      padding: 0.4rem;
+    }
+    button {
+      cursor: pointer;
+    }
+    output {
+      display: block;
+      margin: 0.5rem;
+    }
+    table {
+      border-collapse: collapse;
+    }
+    td,
+    th {
+      padding: 0.4rem;
+      border: 1px solid #ddd;
+    }
+    a {
+      margin-right: 1rem;
+    }
+  </style>
+  <h1>シャードルーター</h1>
+  <label>テーブル<select id="tables"></select></label>
+  <section>
+    <h2>シャード別の行数</h2>
+    <div id="members"></div>
+  </section>
+  <section>
+    <h2>行を追加</h2>
+    <form id="insert">
+      <div id="fields"></div>
+      <output id="preview"></output><button>行を保存</button>
+    </form>
+    <output id="saved" aria-live="polite"></output>
+  </section>
+  <section>
+    <h2>検索</h2>
+    <form id="search">
+      <label>カラム<select id="column"></select></label
+      ><label>値<input id="value" /></label><button>検索</button>
+    </form>
+    <output id="trace"></output>
+    <table id="rows"></table>
+  </section>
+  <p role="alert" id="error"></p>
+  <script>
+    const el = (id) => document.getElementById(id);
+    let catalog,
+      schema,
+      generation = 0,
+      previewId = 0,
+      queryId = 0,
+      countId = 0;
+    async function api(path, options) {
+      const r = await fetch(path, options);
+      if (!r.ok) throw Error(await r.text());
+      return r.json();
+    }
+    function showError(e) {
+      el("error").textContent = e.message;
+    }
+    function link(i) {
+      const m = catalog.shards[i],
+        a = document.createElement("a");
+      a.href = m.URL + "/?table=" + encodeURIComponent(schema.name);
+      a.textContent = m.ID;
+      return a;
+    }
+    async function counts() {
+      const id = ++countId,
+        rows = await api("/rows/" + schema.name);
+      if (id !== countId) return;
+      el("members").replaceChildren(
+        ...rows.map((group, i) => {
+          const item = document.createElement("p");
+          item.append(link(i), group.length + " 件");
+          return item;
+        }),
+      );
+    }
+    async function preview() {
+      const id = ++previewId;
+      try {
+        const v = el("insert").elements.namedItem(schema.primary_key).value;
+        const r = await api(
+          "/preview/" + schema.name + "?" + new URLSearchParams({ value: v }),
+        );
+        if (id === previewId)
+          el("preview").textContent =
+            "ハッシュ " +
+            r.Hash +
+            " → 2で割った余り " +
+            r.Slot +
+            " → " +
+            catalog.shards[r.Slot].ID;
+      } catch (e) {
+        if (id === previewId) el("preview").textContent = e.message;
+      }
+    }
+    function select() {
+      generation++;
+      queryId++;
+      countId++;
+      schema = catalog.tables[el("tables").selectedIndex].schema;
+      for (const id of ["fields", "saved", "members", "rows", "trace", "error"])
+        el(id).replaceChildren();
+      el("column").replaceChildren(new Option("全件", ""));
+      for (const c of schema.columns) {
+        const label = document.createElement("label"),
+          input =
+            c.type === "boolean"
+              ? document.createElement("select")
+              : document.createElement("input");
+        if (c.type === "boolean")
+          input.append(new Option("true"), new Option("false"));
+        input.name = c.name;
+        label.append(c.name, input);
+        el("fields").append(label);
+        el("column").add(new Option(c.name, c.name));
+        if (c.name === schema.primary_key) input.oninput = preview;
+      }
+      preview();
+      counts().catch(showError);
+    }
+    el("tables").onchange = select;
+    el("insert").onsubmit = async (e) => {
+      e.preventDefault();
+      const g = generation,
+        button = e.submitter;
+      button.disabled = true;
+      el("saved").replaceChildren();
+      el("error").replaceChildren();
+      try {
+        const r = await api("/rows/" + schema.name, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(Object.fromEntries(new FormData(e.target))),
+        });
+        if (g !== generation) return;
+        el("saved").replaceChildren(link(r.Slot), "に保存しました");
+        await counts();
+      } catch (e) {
+        showError(e);
+      } finally {
+        button.disabled = false;
+      }
+    };
+    el("search").onsubmit = async (e) => {
+      e.preventDefault();
+      const id = ++queryId;
+      for (const name of ["rows", "trace", "error"]) el(name).replaceChildren();
+      try {
+        const params = new URLSearchParams({
+          column: el("column").value,
+          value: el("value").value,
+        });
+        const groups = await api("/rows/" + schema.name + "?" + params);
+        if (id !== queryId) return;
+        el("trace").textContent = groups
+          .map(
+            (g, i) =>
+              catalog.shards[i].ID +
+              "　" +
+              (g === null ? "未問い合わせ" : g.length + " 件"),
+          )
+          .join(" ／ ");
+        const header = el("rows").insertRow();
+        for (const c of schema.columns)
+          header.append(
+            Object.assign(document.createElement("th"), {
+              textContent: c.name,
+            }),
+          );
+        for (const group of groups) {
+          for (const row of group ?? []) {
+            const tr = el("rows").insertRow();
+            for (const c of schema.columns)
+              tr.insertCell().textContent = String(row[c.name]);
+          }
+        }
+      } catch (e) {
+        if (id === queryId) showError(e);
+      }
+    };
+    api("/catalog")
+      .then((data) => {
+        catalog = data;
+        for (const t of data.tables)
+          el("tables").add(new Option(t.schema.name));
+        if (data.tables.length) select();
+      })
+      .catch(showError);
+  </script>
+</html>
