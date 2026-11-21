@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -306,5 +308,50 @@ func (m *replicaMonitor) removeSecondary(db *rdb.DB, client *http.Client) http.H
 			return
 		}
 		clusterResponse(w, 200, "")
+	}
+}
+
+// Forward the confirmed local identity to the Primary. Its individual removal
+// handler wipes this node through peerWipe and updates the persistent registry.
+func removeSelf(db *rdb.DB, port int, primary string, client *http.Client) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		plan := removalPlan{Source: db.Position().Source, Targets: []peerTarget{{port, db.Directory()}}}
+		endpoint, err := url.JoinPath(primary, "api/settings/replication/secondaries", strconv.Itoa(port))
+		if err != nil || primary == "" {
+			clusterResponse(w, 409, "PrimaryのURLを確認できません。")
+			return
+		}
+		data, err := json.Marshal(plan)
+		if err != nil {
+			clusterResponse(w, 500, err.Error())
+			return
+		}
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodDelete, endpoint, bytes.NewReader(data))
+		if err != nil {
+			clusterResponse(w, 500, err.Error())
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		res, err := client.Do(req)
+		if err != nil {
+			clusterResponse(w, 502, "Primaryで削除の完了を確認できません。")
+			return
+		}
+		defer res.Body.Close()
+		var result struct{ Error *string }
+		if err := json.NewDecoder(io.LimitReader(res.Body, 8192)).Decode(&result); err != nil || result.Error == nil {
+			clusterResponse(w, 502, "Primaryの応答を確認できません。")
+			return
+		}
+		if res.StatusCode != http.StatusOK || *result.Error != "" {
+			message := *result.Error
+			if message == "" {
+				message = "Primaryで削除できませんでした。"
+			}
+			clusterResponse(w, 409, message)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"primaryURL": primary})
 	}
 }

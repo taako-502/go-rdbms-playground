@@ -375,10 +375,12 @@ document.querySelectorAll('[data-reset]').forEach(button => {
 });
 
 let wipeDirectory = '';
+let wipeReturnsToPrimary = false;
 async function loadWipeDirectory() {
   try {
     const result = await request('/api/settings/wipe');
     wipeDirectory = result.directory;
+    wipeReturnsToPrimary = result.role === 'secondary';
     $('wipe-directory').textContent = '保存先 ' + wipeDirectory;
     $('wipe-node').hidden = false;
   } catch {
@@ -388,12 +390,21 @@ async function loadWipeDirectory() {
 loadWipeDirectory();
 $('wipe-node').addEventListener('click', async () => {
   if (state.busy || !wipeDirectory) return;
-  const message = wipeDirectory + ' のデータと複製ログを削除し、このExplorerを停止します。ほかのノードには旧データが残ります。実行しますか？';
-  if (!window.confirm(message)) return;
-  $('settings').close();
   busy(true);
   try {
-    await request('/api/settings/wipe', { method: 'POST' });
+    const message = wipeReturnsToPrimary
+      ? wipeDirectory + ' のデータと複製ログを削除し、このSecondaryを停止します。削除後はPrimaryの画面に戻ります。実行しますか？'
+      : wipeDirectory + ' のデータと複製ログを削除し、このExplorerを停止します。ほかのノードには旧データが残ります。実行しますか？';
+    if (!window.confirm(message)) {
+      busy(false);
+      return;
+    }
+    $('settings').close();
+    const result = await request('/api/settings/wipe', { method: 'POST' });
+    if (result.primaryURL) {
+      window.location.replace(result.primaryURL);
+      return;
+    }
     $('table-content').hidden = true;
     $('replication').hidden = true;
     $('tables').replaceChildren();

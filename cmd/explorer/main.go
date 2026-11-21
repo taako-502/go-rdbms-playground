@@ -63,14 +63,18 @@ func serveNode(ctx context.Context, stop func(), db *rdb.DB, listener net.Listen
 	mux := http.NewServeMux()
 	monitor := newReplicaMonitor()
 	ui := explorer.NewWithWipe(db, stop)
-	mux.HandleFunc("POST /api/settings/wipe", func(w http.ResponseWriter, r *http.Request) {
-		if !monitor.operations.TryLock() {
-			clusterResponse(w, http.StatusConflict, "別の処理が実行中です。")
-			return
-		}
-		defer monitor.operations.Unlock()
-		ui.ServeHTTP(w, r)
-	})
+	if role == "secondary" {
+		mux.Handle("POST /api/settings/wipe", http.NewCrossOriginProtection().Handler(removeSelf(db, port, primaryLink(upstream), localPeerClient())))
+	} else {
+		mux.HandleFunc("POST /api/settings/wipe", func(w http.ResponseWriter, r *http.Request) {
+			if !monitor.operations.TryLock() {
+				clusterResponse(w, http.StatusConflict, "別の処理が実行中です。")
+				return
+			}
+			defer monitor.operations.Unlock()
+			ui.ServeHTTP(w, r)
+		})
+	}
 	mux.Handle("/", ui)
 	mux.HandleFunc("GET /api/replication/status", monitor.status(db, port, primaryLink(upstream)))
 	if role != "secondary" {

@@ -34,7 +34,7 @@ func NewWithWipe(db *rdb.DB, shutdown func()) http.Handler {
 	mux.HandleFunc("POST /api/settings/reset/{mode}", s.reset)
 	if shutdown != nil {
 		mux.HandleFunc("GET /api/settings/wipe", func(w http.ResponseWriter, r *http.Request) {
-			writeJSON(w, http.StatusOK, map[string]string{"directory": db.Directory()})
+			writeJSON(w, http.StatusOK, map[string]string{"directory": db.Directory(), "role": db.Role()})
 		})
 		mux.HandleFunc("POST /api/settings/wipe", func(w http.ResponseWriter, r *http.Request) {
 			if err := db.Wipe(r.Context()); err != nil {

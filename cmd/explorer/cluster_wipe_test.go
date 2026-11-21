@@ -213,3 +213,46 @@ func TestRemoveOneSecondary(t *testing.T) {
 		t.Fatal(ports)
 	}
 }
+
+func TestSecondarySelfRemovalThroughPrimary(t *testing.T) {
+	primary, err := rdb.OpenReplica(t.TempDir(), "primary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer primary.Close()
+	dir := filepath.Join(t.TempDir(), "secondary")
+	if err := primary.SnapshotSecondary(t.Context(), dir); err != nil {
+		t.Fatal(err)
+	}
+	peer, err := rdb.OpenReplica(dir, "secondary")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer peer.Close()
+	monitor := newReplicaMonitor()
+	if err := monitor.loadPeers(primary.Directory()); err != nil {
+		t.Fatal(err)
+	}
+	stopped := false
+	mux := http.NewServeMux()
+	mux.Handle("DELETE /api/settings/replication/secondaries/{port}", monitor.removeSecondary(primary, &http.Client{Transport: handlerTransport{peerWipe(peer, func() { stopped = true })}}))
+	remove := removeSelf(peer, 8081, "http://localhost:8080", &http.Client{Transport: handlerTransport{mux}})
+	run := func() *httptest.ResponseRecorder {
+		w := httptest.NewRecorder()
+		remove(w, httptest.NewRequest("POST", "/api/settings/wipe", nil))
+		return w
+	}
+	if w := run(); w.Code == 200 || stopped {
+		t.Fatal("unregistered peer removed")
+	}
+	if err := monitor.observe(8081, 0, time.Now()); err != nil {
+		t.Fatal(err)
+	}
+	w := run()
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"primaryURL":"http://localhost:8080"`) || !stopped || len(monitor.ports()) != 0 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	if _, err := os.Stat(dir); !os.IsNotExist(err) {
+		t.Fatal("secondary directory remains")
+	}
+}
