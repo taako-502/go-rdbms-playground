@@ -18,6 +18,11 @@ import (
 //go:embed static/*
 var assets embed.FS
 
+// ServeRandomRowScript serves the form helper shared by both Explorers.
+func ServeRandomRowScript(w http.ResponseWriter, r *http.Request) {
+	http.ServeFileFS(w, r, assets, "static/random-row.js")
+}
+
 type server struct{ db *rdb.DB }
 
 func New(db *rdb.DB) http.Handler {

@@ -152,46 +152,11 @@ function renderForm() {
 function fillRandomValues() {
   if (state.busy || state.primaryKeys === null) return;
   const schema = state.selected.schema;
-  const primary = schema.columns.find(column => column.name === schema.primary_key);
-  const randomInteger = () => Math.floor(Math.random() * 1000) + 1;
-  const randomText = () => `sample-${Math.floor(Math.random() * 36 ** 6).toString(36).padStart(6, '0')}`;
-  let primaryValue;
-  switch (primary.type) {
-    case 'integer': {
-      let value = randomInteger();
-      while (state.primaryKeys.has(String(value))) value++;
-      primaryValue = String(value);
-      break;
-    }
-    case 'string': {
-      const prefix = randomText();
-      primaryValue = prefix;
-      for (let suffix = 1; state.primaryKeys.has(primaryValue); suffix++) {
-        primaryValue = `${prefix}-${suffix}`;
-      }
-      break;
-    }
-    case 'boolean': {
-      const available = booleanValues.filter(value => !state.primaryKeys.has(value));
-      if (available.length === 0) {
-        notice('主キーの true と false はどちらも使用済みです。', true);
-        return;
-      }
-      primaryValue = available[Math.floor(Math.random() * available.length)];
-      break;
-    }
-  }
-  for (const column of schema.columns) {
-    const field = $(`field-${column.name}`);
-    if (column === primary) {
-      field.value = primaryValue;
-      continue;
-    }
-    switch (column.type) {
-      case 'integer': field.value = String(randomInteger()); break;
-      case 'string': field.value = randomText(); break;
-      case 'boolean': field.value = booleanValues[Math.floor(Math.random() * booleanValues.length)]; break;
-    }
+  try {
+    fillSampleRow($('insert-form'), schema, state.primaryKeys);
+  } catch (error) {
+    notice(error.message, true);
+    return;
   }
   notice('');
 }
@@ -256,8 +221,8 @@ async function refresh() {
   if (state.busy) return;
   busy(true); notice('');
   try {
-    const current = state.selected?.schema.name;
-    const data = await request('/api/tables'); state.tables = data.tables;
+    const current = state.selected?.schema.name ?? new URLSearchParams(location.search).get('table');
+    const data = await request('/api/tables'); state.tables = data.tables; state.shard = data.shard !== undefined; if (state.shard) document.querySelector('.insert-panel').hidden = true;
     selectTable(current); busy(true);
     if (state.selected) await loadTable();
   } catch (error) { notice(`読み込みに失敗しました。${error.message}`, true); }
@@ -319,7 +284,7 @@ async function updateReplicaStatus() {
       primaryLink.href = status.PrimaryURL;
       primaryLink.textContent = 'Primaryに戻る (' + status.PrimaryURL + ')';
     }
-    document.querySelector('.insert-panel').hidden = secondary;
+    document.querySelector('.insert-panel').hidden = secondary || state.shard;
     $('reset-actions').hidden = secondary;
     $('reset-readonly').hidden = !secondary;
     $('replica-state').textContent = secondary ? 'このノードは読み取り専用' : '直近の報告値・2秒ごとに更新';

@@ -30,7 +30,15 @@ func run() error {
 	demo := flag.Bool("demo", true, "apply sample migrations and seed an empty users table")
 	role := flag.String("role", "", "replication role: primary or secondary")
 	upstream := flag.String("upstream", "", "primary URL for a secondary")
+	cluster := flag.String("cluster", "", "sharded cluster directory")
+	initCluster := flag.Bool("init-cluster", false, "create a new cluster directory")
 	flag.Parse()
+	if *cluster != "" {
+		return runCluster(*cluster, *port, *initCluster, *demo)
+	}
+	if *initCluster {
+		return errors.New("-init-cluster requires -cluster")
+	}
 	if (*role == "secondary") != (*upstream != "") {
 		return fmt.Errorf("secondary requires -upstream; other roles must omit it")
 	}
@@ -56,7 +64,7 @@ func run() error {
 	return serveNode(ctx, stop, db, listener, *upstream)
 }
 
-func serveNode(ctx context.Context, stop func(), db *rdb.DB, listener net.Listener, upstream string) error {
+func serveNode(ctx context.Context, stop func(), db *rdb.DB, listener net.Listener, upstream string, shard ...*shardNode) error {
 	defer listener.Close()
 	role := db.Role()
 	port := listener.Addr().(*net.TCPAddr).Port
@@ -110,7 +118,11 @@ func serveNode(ctx context.Context, stop func(), db *rdb.DB, listener net.Listen
 		go func() { defer close(finished); follow(workerCtx, db, upstream, port) }()
 		defer func() { cancel(); <-finished }()
 	}
-	server := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
+	var handler http.Handler = mux
+	if len(shard) > 0 {
+		handler = shard[0].wrap(db, mux)
+	}
+	server := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 60 * time.Second}
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(listener) }()
 	log.Printf("Database explorer: http://%s (data: %s)", listener.Addr(), db.Directory())

@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="ja">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>シャードルーター</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #111820;
+      --panel: #19232d;
+      --line: #354451;
+      --muted: #aebcc6;
+      --mint: #85e8c6;
+      --blue: #9dc4ff;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: #f1f5f7;
+      font:
+        15px/1.6 "Inter",
+        "Hiragino Sans",
+        system-ui,
+        sans-serif;
+    }
+    main {
+      width: min(1080px, 100%);
+      margin: auto;
+      padding: clamp(20px, 5vw, 64px) clamp(16px, 4vw, 48px);
+    }
+    header {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 20px;
+      padding-bottom: 24px;
+      border-bottom: 1px solid var(--line);
+    }
+    h1,
+    h2,
+    p {
+      margin: 0;
+    }
+    h1 {
+      font-size: clamp(25px, 4vw, 40px);
+      line-height: 1.2;
+      letter-spacing: -0.045em;
+    }
+    h2 {
+      font-size: 19px;
+      letter-spacing: 0.015em;
+    }
+    header label {
+      min-width: 145px;
+    }
+    label {
+      display: grid;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+    input,
+    select,
+    button {
+      font: inherit;
+      border-radius: 7px;
+      padding: 10px 12px;
+    }
+    input,
+    select {
+      width: 100%;
+      min-width: 0;
+      background: #101820;
+      border: 1px solid #4b5a66;
+      color: #f5f7f9;
+      font-family: ui-monospace, monospace;
+    }
+    :focus-visible {
+      outline: 2px solid var(--mint);
+      outline-offset: 3px;
+    }
+    section {
+      margin-top: 26px;
+    }
+    #members,
+    .workspace,
+    #fields {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    #members {
+      margin-top: 12px;
+    }
+    #members a {
+      border: 1px solid var(--line);
+      border-left: 4px solid var(--accent);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 16px 20px;
+      color: var(--accent);
+      text-decoration: none;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    #members a:hover {
+      background: #23313d;
+    }
+    #members a::after {
+      content: "↗";
+      margin-left: auto;
+    }
+    #members strong {
+      font:
+        600 27px/1.4 ui-monospace,
+        monospace;
+      color: white;
+    }
+    [data-slot="0"] {
+      --accent: var(--mint);
+    }
+    [data-slot="1"] {
+      --accent: var(--blue);
+    }
+    .shard {
+      font:
+        600 15px ui-monospace,
+        monospace;
+      color: var(--accent);
+      margin-right: 8px;
+    }
+    .workspace {
+      align-items: start;
+      gap: 18px;
+    }
+    .panel {
+      min-width: 0;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: clamp(16px, 2.5vw, 26px);
+    }
+    .panel h2 {
+      margin-bottom: 20px;
+    }
+    #fields,
+    #search {
+      gap: 12px;
+    }
+    #search {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+    button {
+      background: var(--mint);
+      color: #10251f;
+      border: 0;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    button:hover {
+      filter: brightness(1.08);
+    }
+    button:disabled {
+      opacity: 0.55;
+    }
+    #search button {
+      grid-column: 1/-1;
+      background: #d0e2fb;
+    }
+    #insert button {
+      width: 100%;
+    }
+    output {
+      display: block;
+      color: var(--muted);
+      font-size: 13px;
+      overflow-wrap: anywhere;
+    }
+    #preview {
+      padding: 12px;
+      margin: 16px 0;
+      background: #111a22;
+      border-radius: 6px;
+    }
+    #saved:not(:empty),
+    #trace:not(:empty) {
+      margin-top: 14px;
+    }
+    #trace {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    #trace span {
+      padding: 4px 8px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--accent);
+    }
+    #trace .skipped {
+      color: var(--muted);
+      border-style: dashed;
+    }
+    .scroll {
+      overflow: auto;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      font:
+        13px/1.6 ui-monospace,
+        monospace;
+    }
+    td,
+    th {
+      padding: 9px;
+      text-align: left;
+      border-bottom: 1px solid var(--line);
+    }
+    th {
+      color: var(--muted);
+    }
+    #error:not(:empty) {
+      margin-top: 16px;
+      color: #ffbcae;
+    }
+    @media (max-width: 720px) {
+      .workspace {
+        grid-template-columns: 1fr;
+      }
+      .panel {
+        margin-top: 16px;
+      }
+      .workspace {
+        gap: 0;
+      }
+    }
+    @media (max-width: 480px) {
+      header {
+        align-items: start;
+        flex-direction: column;
+      }
+      #members {
+        gap: 8px;
+      }
+      #members a {
+        padding: 10px;
+      }
+      #members .shard {
+        width: 100%;
+      }
+    }
+  .insert-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    #random-fill { background: transparent; color: var(--mint); border: 1px solid var(--line); }
+  </style>
+  <main>
+    <header>
+      <h1>シャードルーター</h1>
+      <label>テーブル<select id="tables"></select></label>
+    </header>
+    <section>
+      <h2>シャード別の行数</h2>
+      <div id="members"></div>
+    </section>
+    <div class="workspace">
+      <section class="panel">
+        <h2>行を追加</h2>
+        <form id="insert">
+          <div id="fields"></div>
+          <output id="preview"></output>
+          <div class="insert-actions"><button type="button" id="random-fill" disabled>ランダム入力</button><button type="submit">行を保存</button></div>
+        </form>
+        <output id="saved" aria-live="polite"></output>
+      </section>
+      <section class="panel">
+        <h2>検索</h2>
+        <form id="search">
+          <label>カラム<select id="column"></select></label
+          ><label>値<input id="value" /></label><button>検索</button>
+        </form>
+        <output id="trace"></output>
+        <div class="scroll"><table id="rows"></table></div>
+      </section>
+    </div>
+    <p role="alert" id="error"></p>
+  </main>
+  <script src="/random-row.js"></script>
+  <script>
+    const el = (id) => document.getElementById(id);
+    let catalog,
+      schema,
+      generation = 0,
+      previewId = 0,
+      queryId = 0,
+      countId = 0;
+    async function api(path, options) {
+      const r = await fetch(path, options);
+      if (!r.ok) throw Error(await r.text());
+      return r.json();
+    }
+    function showError(e) {
+      el("error").textContent = e.message;
+    }
+    function link(i) {
+      const m = catalog.shards[i],
+        a = document.createElement("a");
+      a.href = m.URL + "/?table=" + encodeURIComponent(schema.name);
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.title = "シャードのExplorerを新しいタブで開く";
+      a.textContent = m.ID;
+      a.className = "shard";
+      a.dataset.slot = i;
+      return a;
+    }
+    let primaryKeys = new Set();
+    el("random-fill").onclick = () => {
+      try {
+        fillSampleRow(el("insert"), schema, primaryKeys);
+        el("error").replaceChildren();
+        preview();
+      } catch (error) { showError(error); }
+    };
+    async function counts() {
+      const id = ++countId,
+        rows = await api("/rows/" + schema.name);
+      if (id !== countId) return;
+      primaryKeys = new Set(rows.flat().map(row => String(row[schema.primary_key])));
+      el("random-fill").disabled = false;
+      el("members").replaceChildren(
+        ...rows.map((group, i) => {
+          const item = link(i);
+          const name = document.createElement("span");
+          name.className = "shard";
+          name.textContent = item.textContent;
+          const count = document.createElement("strong");
+          count.textContent = group.length.toLocaleString("ja-JP");
+          item.replaceChildren(name, count, "件");
+          return item;
+        }),
+      );
+    }
+    async function preview() {
+      const id = ++previewId;
+      try {
+        const v = el("insert").elements.namedItem(schema.primary_key).value;
+        if (
+          v === "" &&
+          schema.columns.find((c) => c.name === schema.primary_key).type ===
+            "integer"
+        ) {
+          el("preview").textContent = "主キーを入力すると保存先を表示します。";
+          return;
+        }
+        const r = await api(
+          "/preview/" + schema.name + "?" + new URLSearchParams({ value: v }),
+        );
+        if (id === previewId)
+          el("preview").textContent =
+            "ハッシュ " +
+            r.Hash +
+            " → 2で割った余り " +
+            r.Slot +
+            " → " +
+            catalog.shards[r.Slot].ID;
+      } catch (e) {
+        if (id === previewId) el("preview").textContent = e.message;
+      }
+    }
+    function select() {
+      el("random-fill").disabled = true;
+      generation++;
+      queryId++;
+      countId++;
+      schema = catalog.tables[el("tables").selectedIndex].schema;
+      for (const id of ["fields", "saved", "members", "rows", "trace", "error"])
+        el(id).replaceChildren();
+      el("column").replaceChildren(new Option("全件", ""));
+      for (const c of schema.columns) {
+        const label = document.createElement("label"),
+          input =
+            c.type === "boolean"
+              ? document.createElement("select")
+              : document.createElement("input");
+        if (c.type === "boolean")
+          input.append(new Option("true"), new Option("false"));
+        input.name = c.name;
+        label.append(c.name, input);
+        el("fields").append(label);
+        el("column").add(new Option(c.name, c.name));
+        if (c.name === schema.primary_key) input.oninput = preview;
+      }
+      preview();
+      counts().catch(showError);
+    }
+    el("tables").onchange = select;
+    el("insert").onsubmit = async (e) => {
+      e.preventDefault();
+      const g = generation,
+        button = e.submitter;
+      button.disabled = true;
+      el("saved").replaceChildren();
+      el("error").replaceChildren();
+      try {
+        const input = Object.fromEntries(new FormData(e.target));
+        const r = await api("/rows/" + schema.name, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(input),
+        });
+        if (g !== generation) return;
+        el("saved").replaceChildren(link(r.Slot), "に保存しました");
+        primaryKeys.add(input[schema.primary_key]);
+        await counts();
+      } catch (e) {
+        showError(e);
+      } finally {
+        button.disabled = false;
+      }
+    };
+    el("search").onsubmit = async (e) => {
+      e.preventDefault();
+      const id = ++queryId;
+      for (const name of ["rows", "trace", "error"]) el(name).replaceChildren();
+      try {
+        const params = new URLSearchParams({
+          column: el("column").value,
+          value: el("value").value,
+        });
+        const groups = await api("/rows/" + schema.name + "?" + params);
+        if (id !== queryId) return;
+        el("trace").replaceChildren(
+          ...groups.map((group, i) => {
+            const tag = document.createElement("span");
+            tag.dataset.slot = i;
+            if (group === null) tag.className = "skipped";
+            tag.textContent =
+              catalog.shards[i].ID +
+              " · " +
+              (group === null ? "未問い合わせ" : group.length + " 件");
+            return tag;
+          }),
+        );
+        const header = el("rows").insertRow();
+        for (const c of schema.columns)
+          header.append(
+            Object.assign(document.createElement("th"), {
+              textContent: c.name,
+            }),
+          );
+        for (const group of groups) {
+          for (const row of group ?? []) {
+            const tr = el("rows").insertRow();
+            for (const c of schema.columns)
+              tr.insertCell().textContent = String(row[c.name]);
+          }
+        }
+      } catch (e) {
+        if (id === queryId) showError(e);
+      }
+    };
+    api("/catalog")
+      .then((data) => {
+        catalog = data;
+        for (const t of data.tables)
+          el("tables").add(new Option(t.schema.name));
+        if (data.tables.length) select();
+      })
+      .catch(showError);
+  </script>
+</html>
